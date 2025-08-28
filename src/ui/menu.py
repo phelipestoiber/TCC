@@ -90,7 +90,7 @@ class Menu:
         # 4. Obter a forma de definir os calados
         metodo_calado = questionary.select(
             "Como você deseja definir a faixa de calados para os cálculos?",
-            choices=["Fornecer uma lista de calados", "Definir calado mínimo, máximo e o número de calados", "Definir calado mínimo, máximo e o passo"]
+            choices=["Definir calado mínimo, máximo e o número de calados", "Definir calado mínimo, máximo e o passo", "Fornecer uma lista de calados"]
         ).ask()
 
         if not metodo_calado:

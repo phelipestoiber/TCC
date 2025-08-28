@@ -69,10 +69,13 @@ def main():
         # 7. Exibir os resultados do teste
         print("\n--- RESULTADOS DO TESTE ---")
         print(f"  Calado (T): {props_calado.calado:.3f} m")
-        print(f"  LWL: {props_calado.lwl:.3f} m")
-        print(f"  BWL: {props_calado.bwl:.3f} m")
         print(f"  Extremidade de Ré (x_re): {props_calado.x_re:.3f} m")
         print(f"  Extremidade de Vante (x_vante): {props_calado.x_vante:.3f} m")
+        print(f"  LWL: {props_calado.lwl:.3f} m")
+        print(f"  BWL: {props_calado.bwl:.3f} m")
+        print(f"  Área do Plano de Flutuação (AWP): {props_calado.area_plano_flutuacao:.3f} m²")
+        print(f"  Volume de Carena: {props_calado.volume:.3f} m³")
+        print(f"  Deslocamento: {props_calado.deslocamento:.3f} t")
         print("\nTeste concluído com sucesso!")
 
     except Exception as e:
