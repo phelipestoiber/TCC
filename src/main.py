@@ -55,30 +55,12 @@ def main():
     print(f"Calados a serem calculados: {[round(c, 3) for c in lista_calados]}")
 
     # 4. Executar os cálculos hidrostáticos
-    try:
-        # Cria o objeto que define a geometria do casco via interpolação
-        casco_interpolado = InterpoladorCasco(tabela_processada)
-        
-        # Cria a calculadora que orquestrará os cálculos
-        calculadora = CalculadoraHidrostatica(casco_interpolado, densidade)
-        
-        # Executa o cálculo para todos os calados
-        df_resultados = calculadora.calcular_curvas(lista_calados)
-        
-        # 5. Exibir os resultados
-        print("\n--- CURVAS HIDROSTÁTICAS ---")
-        pd.set_option('display.max_rows', 50)
-        pd.set_option('display.width', 120) # Ajusta a largura do display
-        print(df_resultados.round(4)) # Arredonda para 4 casas decimais
 
-    except Exception as e:
-        print(f"\nOcorreu um erro inesperado durante os cálculos: {e}")
-        print("Por favor, verifique a consistência da sua tabela de cotas.")
 
     # --- Próximos Passos ---
-    # 3. Processar os dados dos calados para gerar a lista final de calados
-    # 4. Executar os cálculos hidrostáticos (usando o módulo core/chc.py)
-    # 5. Exibir ou salvar os resultados
+    # 5. Processar os dados dos calados para gerar a lista final de calados
+    # 6. Executar os cálculos hidrostáticos (usando o módulo core/chc.py)
+    # 7. Exibir ou salvar os resultados
 
     print("\nAplicação finalizada por enquanto.")
 
