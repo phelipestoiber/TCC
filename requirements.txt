@@ -1,4 +1,4 @@
 # TCC/requirements.txt
 pandas
+numpy
 questionary
-pydantic
