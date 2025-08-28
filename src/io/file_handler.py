@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 
 class FileHandler:
     """
@@ -93,3 +94,31 @@ class FileHandler:
 
         print("Validação da tabela de cotas concluída com sucesso.")
         return df
+    
+    def salvar_resultados_csv(self, df_resultados: pd.DataFrame, caminho_arquivo: str):
+        """
+        Salva o DataFrame de resultados em um arquivo CSV.
+
+        Args:
+            df_resultados (pd.DataFrame): O DataFrame com os dados a serem salvos.
+            caminho_arquivo (str): O caminho completo do arquivo onde os dados serão salvos.
+        
+        Raises:
+            IOError: Se ocorrer um problema ao tentar escrever o arquivo (ex: permissão negada).
+        """
+        try:
+            # Garante que o diretório de destino exista
+            diretorio_destino = os.path.dirname(caminho_arquivo)
+            if not os.path.exists(diretorio_destino):
+                os.makedirs(diretorio_destino)
+
+            # Salva o DataFrame em CSV
+            # index=False: para não salvar o índice do DataFrame como uma coluna.
+            # float_format: para garantir uma formatação consistente dos números.
+            df_resultados.to_csv(caminho_arquivo, index=False, float_format='%.4f')
+            print(f"\n-> Resultados salvos com sucesso em: '{caminho_arquivo}'")
+
+        except IOError as e:
+            print(f"\nErro ao salvar o arquivo: {e}")
+            print("Verifique as permissões de escrita no diretório.")
+            raise

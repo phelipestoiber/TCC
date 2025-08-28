@@ -4,6 +4,8 @@ from scipy.interpolate import interp1d, PchipInterpolator
 from scipy.optimize import fsolve
 from scipy.integrate import quad
 from typing import Dict, Any, List
+import concurrent.futures
+import time
 
 class InterpoladorCasco:
     """
@@ -96,9 +98,7 @@ class InterpoladorCasco:
                 return interp1d(x_coords, z_coords, kind='linear', bounds_error=False, fill_value=0.0)
             
         # Retorna None se não for possível gerar um interpolador.
-        return None
-
-    
+        return None    
         
 class PropriedadesHidrostaticas:
     """
@@ -133,6 +133,21 @@ class PropriedadesHidrostaticas:
         self.deslocamento: float = 0.0 # Atributo para o deslocamento em massa
         self.interpolador_wl: Any = None # Atributo para o interpolador da linha d'água
         self.interpolador_areas: Any = None # Atributo para o interpolador das áreas seccionais
+        self.lcf: float = 0.0  # Posição Longitudinal do Centro de Flutuação
+        self.lcb: float = 0.0  # Posição Longitudinal do Centro de Carena
+        self.vcb: float = 0.0  # Posição Vertical do Centro de Carena
+        self.momento_inercia_transversal: float = 0.0
+        self.momento_inercia_longitudinal: float = 0.0
+        self.bmt: float = 0.0  # Raio Metacêntrico Transversal
+        self.kmt: float = 0.0  # Altura Metacêntrica Transversal
+        self.bml: float = 0.0  # Raio Metacêntrico Longitudinal
+        self.kml: float = 0.0  # Altura Metacêntrica Longitudinal
+        self.tpc: float = 0.0  # Toneladas por Centímetro de Imersão
+        self.mtc: float = 0.0  # Momento para Alterar o Trim em 1 cm
+        self.cb: float = 0.0   # Coeficiente de Bloco
+        self.cp: float = 0.0   # Coeficiente Prismático
+        self.cwp: float = 0.0  # Coeficiente do Plano de Flutuação
+        self.cm: float = 0.0   # Coeficiente de Seção Mestra
 
         self._calcular_todas_propriedades()
 
@@ -295,6 +310,7 @@ class PropriedadesHidrostaticas:
         # 5. Integra o interpolador da linha d'água para obter a meia-área.
         meia_area, _ = quad(self.interpolador_wl, self.x_re, self.x_vante)
         self.area_plano_flutuacao = meia_area * 2
+        
 
     def _calcular_volume_deslocamento(self):
         """
@@ -334,23 +350,296 @@ class PropriedadesHidrostaticas:
         # 4. Calcula o deslocamento (massa) a partir do volume e da densidade.
         self.deslocamento = self.volume * self.densidade
 
+    def _calcular_lcf(self):
+        """
+        Calcula a posição longitudinal do centro de flutuação (LCF).
+
+        O LCF é o centroide da área do plano de flutuação (AWP). É calculado
+        integrando-se o primeiro momento de área da AWP em relação à origem (x=0)
+        e dividindo-se pela área total da AWP. A integral é de x * 2y(x) dx,
+        onde y(x) é a curva de meia-boca da linha d'água.
+        """
+        # A validação previne divisão por zero ou cálculos sem um interpolador definido.
+        if self.area_plano_flutuacao < 1e-6 or not self.interpolador_wl:
+            self.lcf = 0.0
+            return
+            
+        # Define a função a ser integrada: x * largura_total(x) = x * 2y(x)
+        funcao_momento_longitudinal = lambda x: x * (2 * self.interpolador_wl(x))
+        
+        # Integra para obter o momento longitudinal total da AWP.
+        momento_long_total, _ = quad(funcao_momento_longitudinal, self.x_re, self.x_vante)
+        
+        # LCF é o momento dividido pela área.
+        self.lcf = momento_long_total / self.area_plano_flutuacao
+
+    def _calcular_lcb(self):
+        """
+        Calcula a posição longitudinal do centro de carena (LCB).
+
+        O LCB é o centroide do volume submerso. De forma análoga ao LCF, ele é
+        calculado integrando-se o primeiro momento de volume em relação à
+        origem (x=0) e dividindo-se pelo volume total de carena. A integral é
+        de x * A(x) dx, onde A(x) é a curva de áreas seccionais.
+        """
+        if self.volume < 1e-6 or not self.interpolador_areas:
+            self.lcb = 0.0
+            return
+            
+        # Define a função a ser integrada: x * Area(x).
+        funcao_momento_longitudinal = lambda x: x * self.interpolador_areas(x)
+        
+        # Integra para obter o momento longitudinal do volume.
+        momento_long_volume, _ = quad(funcao_momento_longitudinal, self.x_re, self.x_vante)
+        
+        # LCB é o momento de volume dividido pelo volume.
+        self.lcb = momento_long_volume / self.volume
+
+    def _calcular_momento_vertical_secao(self, x_baliza: float) -> float:
+        """
+        Calcula o momento de área vertical de uma única seção transversal.
+
+        Este é um método auxiliar para o cálculo do VCB. Ele calcula o primeiro
+        momento de área da seção submersa em relação à linha de base (z=0).
+        A integral é de z * 2y(z) dz.
+
+        Args:
+            x_baliza (float): A posição longitudinal (X) da baliza.
+
+        Returns:
+            float: O momento vertical da área da seção [m³].
+        """
+        # A função a ser integrada é z * largura_total(z) = z * 2y(z).
+        funcao_momento = lambda z: z * (2 * self._obter_meia_boca(x_baliza, z))
+        
+        # Integra de 0 (quilha) até o calado atual.
+        momento_vertical, _ = quad(funcao_momento, 0, self.calado)
+        return momento_vertical
+
+    def _calcular_vcb(self):
+        """
+        Calcula a posição vertical do centro de carena (VCB).
+
+        O VCB é obtido através de uma dupla integração. Primeiro, o momento
+        vertical de cada seção transversal é calculado (ver `_calcular_momento_vertical_secao`).
+        Em seguida, a curva de momentos verticais (Mv(x)) é integrada ao longo
+        do comprimento para obter o momento vertical total do volume. O VCB é
+        este momento total dividido pelo volume de carena.
+        """
+        if self.volume < 1e-6:
+            self.vcb = 0.0
+            return
+
+        # 1. Calcula o momento vertical para cada baliza física do casco.
+        momentos_verticais = {
+            x: self._calcular_momento_vertical_secao(x) 
+            for x in self.casco.posicoes_balizas
+        }
+            
+        # 2. Cria um interpolador para a curva de momentos verticais (Momento = f(x)).
+        x_pontos, momentos_pontos = zip(*sorted(momentos_verticais.items()))
+        
+        if self.casco.metodo_interp == 'pchip':
+            interpolador_momentos = PchipInterpolator(x_pontos, momentos_pontos, extrapolate=False)
+        else:
+            interpolador_momentos = interp1d(x_pontos, momentos_pontos, kind='linear', bounds_error=False, fill_value=0.0)
+
+        # 3. Integra a curva de momentos ao longo do LWL para obter o momento total do volume.
+        momento_total_vertical, _ = quad(interpolador_momentos, self.x_re, self.x_vante)
+
+        # 4. VCB é o momento vertical total dividido pelo volume.
+        self.vcb = momento_total_vertical / self.volume
+
+    def _calcular_momento_inercia_transversal(self):
+        """
+        Calcula o momento de inércia transversal (I_T) da área do plano de flutuação.
+
+        Este momento de inércia é calculado em relação à linha de centro do navio e é
+        fundamental para determinar a estabilidade transversal inicial (BMt). A fórmula
+        utilizada é a integral de (2/3) * y(x)³ dx ao longo do LWL, onde y(x) é a
+        curva de meia-boca da linha d'água.
+        """
+        # A validação previne cálculos sem um interpolador definido.
+        if not self.interpolador_wl:
+            self.momento_inercia_transversal = 0.0
+            return
+
+        # Define a função a ser integrada: (2/3) * y(x)³.
+        funcao_momento_inercia = lambda x: (2/3) * (self.interpolador_wl(x)**3)
+        
+        # Integra para obter o momento de inércia transversal total.
+        momento_total, _ = quad(funcao_momento_inercia, self.x_re, self.x_vante)
+        self.momento_inercia_transversal = momento_total
+
+    def _calcular_momento_inercia_longitudinal(self):
+        """
+        Calcula o momento de inércia longitudinal (I_L) da área do plano de flutuação.
+
+        Este momento de inércia é calculado em relação a um eixo transversal que passa
+        pelo centro de flutuação (LCF). É essencial para a estabilidade longitudinal
+        e cálculos de trim (BMl, MTc). A fórmula é a integral de (x - LCF)² * 2y(x) dx,
+        aplicando o Teorema dos Eixos Paralelos.
+        """
+        if not self.interpolador_wl:
+            self.momento_inercia_longitudinal = 0.0
+            return
+            
+        # Define a função a ser integrada: (distância ao LCF)² * largura_total(x).
+        funcao_momento_inercia = lambda x: ((x - self.lcf)**2) * (2 * self.interpolador_wl(x))
+        
+        # Integra para obter o momento de inércia longitudinal total.
+        momento_total, _ = quad(funcao_momento_inercia, self.x_re, self.x_vante)
+        self.momento_inercia_longitudinal = momento_total
+
+    def _calcular_propriedades_derivadas(self):
+        """
+        Calcula as propriedades hidrostáticas finais que dependem dos valores base.
+
+        Após o cálculo das áreas, volumes, centros e momentos de inércia, este
+        método calcula os parâmetros de estabilidade e os coeficientes de forma,
+        que são relações adimensionais usadas para caracterizar a geometria do casco.
+        """
+        # --- Estabilidade Transversal ---
+        # Raio metacêntrico transversal (BMt): I_T / Volume
+        self.bmt = self.momento_inercia_transversal / self.volume if self.volume > 1e-6 else 0.0
+        # Altura do metacentro transversal acima da quilha (KMt): VCB + BMt
+        self.kmt = self.vcb + self.bmt
+
+        # --- Estabilidade Longitudinal ---
+        # Raio metacêntrico longitudinal (BMl): I_L / Volume
+        self.bml = self.momento_inercia_longitudinal / self.volume if self.volume > 1e-6 else 0.0
+        # Altura do metacentro longitudinal acima da quilha (KMl): VCB + BMl
+        self.kml = self.vcb + self.bml
+
+        # --- Outras Propriedades Hidrostáticas ---
+        # Toneladas por Centímetro de Imersão (TPC): (AWP * densidade) / 100
+        self.tpc = (self.area_plano_flutuacao * self.densidade) / 100.0
+        
+        # Momento para Trimestre em 1 cm (MTc): (I_L * densidade) / (100 * LWL)
+        self.mtc = (self.momento_inercia_longitudinal * self.densidade) / (100 * self.lwl) if self.lwl > 1e-6 else 0.0
+        
+        # --- Coeficientes de Forma ---
+        # Área da seção mestra (Am): a maior área de seção transversal calculada.
+        area_secao_mestra = max(self.areas_secoes.values()) if self.areas_secoes else 0.0
+
+        # Coeficiente de Bloco (Cb): Volume / (LWL * BWL * T)
+        denominador_bloco = self.lwl * self.bwl * self.calado
+        self.cb = self.volume / denominador_bloco if denominador_bloco > 1e-6 else 0.0
+
+        # Coeficiente Prismático (Cp): Volume / (Am * LWL)
+        denominador_prismatico = area_secao_mestra * self.lwl
+        self.cp = self.volume / denominador_prismatico if denominador_prismatico > 1e-6 else 0.0
+        
+        # Coeficiente do Plano de Flutuação (Cwp): AWP / (LWL * BWL)
+        denominador_plano_flutuacao = self.lwl * self.bwl
+        self.cwp = self.area_plano_flutuacao / denominador_plano_flutuacao if denominador_plano_flutuacao > 1e-6 else 0.0
+
+        # Coeficiente de Seção Mestra (Cm): Cb / Cp ou Am / (BWL * T)
+        self.cm = self.cb / self.cp if self.cp > 1e-6 else 0.0
+
     def _calcular_todas_propriedades(self):
         """
         Método orquestrador que executa todos os cálculos na ordem correta.
-
-        A sequência é importante devido às dependências entre as propriedades
-        (e.g., o volume depende das áreas seccionais).
         """
         print(f"\n--- Calculando propriedades para o calado T = {self.calado:.3f} m ---")
         
-        # 1. Calcula as dimensões fundamentais da linha d'água.
+        # Cálculos de geometria base
         self._calcular_dimensoes_linha_dagua()
+        self._calcular_area_plano_flutuacao()
         
-        # 2. Calcula a área de cada seção transversal e armazena os resultados.
-        #    Este passo é necessário antes de calcular o volume.
+        # Cálculo dos centroides longitudinais
+        self._calcular_lcf()
+        
+        # Cálculos de volume (requerem as áreas das seções)
         for x_pos in self.casco.posicoes_balizas:
             self.areas_secoes[x_pos] = self._calcular_area_secao(x_pos)
-        
-        # 3. Com as dimensões e áreas prontas, calcula as propriedades de alto nível.
-        self._calcular_area_plano_flutuacao()
         self._calcular_volume_deslocamento()
+        self._calcular_lcb()
+
+        # Cálculo do centroide vertical (requer o volume)
+        self._calcular_vcb()
+
+        # Cálculo dos momentos de inércia
+        self._calcular_momento_inercia_transversal()
+        self._calcular_momento_inercia_longitudinal()
+
+        # Cálculo das propriedades finais
+        self._calcular_propriedades_derivadas()
+
+def calcular_propriedades_para_um_calado(args):
+    """
+    Função "worker" projetada para ser executada em um processo separado.
+
+    Esta função de nível superior recebe todos os argumentos necessários, instancia
+    a classe de cálculo PropriedadesHidrostaticas e retorna os resultados em um
+    dicionário. Este formato é necessário para que a função possa ser "serializada"
+    (pickled) pelo módulo multiprocessing.
+
+    Args:
+        args (tuple): Uma tupla contendo (interpolador_casco, calado, densidade).
+
+    Returns:
+        dict: Um dicionário com os resultados hidrostáticos para o calado fornecido.
+    """
+    interpolador, calado, densidade = args
+    # A instanciação da classe executa todos os cálculos para este calado.
+    props = PropriedadesHidrostaticas(interpolador, calado, densidade)
+    
+    # Monta um dicionário com os resultados formatados.
+    return {
+        'Calado (m)': calado,
+        'Volume (m³)': props.volume, 'Desloc. (t)': props.deslocamento,
+        'AWP (m²)': props.area_plano_flutuacao, 'LWL (m)': props.lwl, 'BWL (m)': props.bwl,
+        'LCB (m)': props.lcb, 'VCB (m)': props.vcb, 'LCF (m)': props.lcf,
+        'BMt (m)': props.bmt, 'KMt (m)': props.kmt, 'BMl (m)': props.bml, 'KMl (m)': props.kml,
+        'TPC (t/cm)': props.tpc, 'MTc (t·m/cm)': props.mtc, 'Cb': props.cb, 'Cp': props.cp,
+        'Cwp': props.cwp, 'Cm': props.cm,
+    }
+
+class CalculadoraHidrostatica:
+    """
+    Orquestra o cálculo das curvas hidrostáticas para múltiplos calados
+    utilizando processamento paralelo para otimizar a performance.
+    """
+    def __init__(self, interpolador_casco: InterpoladorCasco, densidade: float):
+        """
+        Inicializa a calculadora.
+
+        Args:
+            interpolador_casco (InterpoladorCasco): O objeto com a geometria do casco.
+            densidade (float): A densidade da água [t/m³].
+        """
+        self.casco = interpolador_casco
+        self.densidade = densidade
+        
+    def calcular_curvas(self, lista_de_calados: list) -> pd.DataFrame:
+        """
+        Executa o cálculo hidrostático para uma lista de calados em paralelo.
+
+        Args:
+            lista_de_calados (list): Lista de calados a serem calculados.
+
+        Returns:
+            pd.DataFrame: Um DataFrame do pandas contendo a tabela de curvas hidrostáticas.
+        """
+        start_time = time.perf_counter()
+        print(f"\n-> Iniciando cálculo PARALELO para {len(lista_de_calados)} calados...")
+        
+        # Prepara a lista de tarefas. Cada tarefa é uma tupla de argumentos
+        # para a nossa função 'worker'.
+        tarefas = [(self.casco, calado, self.densidade) for calado in lista_de_calados]
+        
+        resultados = []
+        # ProcessPoolExecutor gerencia um pool de processos (um para cada núcleo de CPU, por padrão),
+        # distribuindo as tarefas entre eles.
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            # O método 'map' aplica a função 'calcular_propriedades_para_um_calado'
+            # a cada item da lista 'tarefas' e coleta os resultados.
+            resultados = list(executor.map(calcular_propriedades_para_um_calado, tarefas))
+            
+        duration = time.perf_counter() - start_time
+        print(f"-> Cálculo finalizado em {duration:.2f} segundos.")
+        
+        # Garante que os resultados estejam ordenados pelo calado.
+        resultados.sort(key=lambda r: r['Calado (m)'])
+        return pd.DataFrame(resultados)

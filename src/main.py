@@ -1,7 +1,8 @@
 from .ui.menu import Menu
 from .io.file_handler import FileHandler
-from .core.chc import InterpoladorCasco, PropriedadesHidrostaticas
+from .core.chc import InterpoladorCasco, CalculadoraHidrostatica
 from .utils.calado_utils import gerar_lista_de_calados
+from .ui.display import exibir_tabela_hidrostatica
 import pandas as pd
 
 def main():
@@ -45,41 +46,29 @@ def main():
         print("Nenhum calado válido foi gerado. Encerrando.")
         return
     
-    # --- BLOCO DE TESTE ---
-    # Vamos testar o cálculo apenas para o primeiro calado da lista.
-    primeiro_calado = 1.98
-    print(f"\n--- INICIANDO TESTE PARA O CALADO T = {primeiro_calado:.3f} m ---")
-    
+    # 4. Executar os cálculos hidrostáticos
     try:
-        # 4. Criar o interpolador do casco
-        print("-> Criando objeto InterpoladorCasco...")
-        casco_interpolado = InterpoladorCasco(tabela_processada, metodo_interp=metodo_interp)
-        print("-> Objeto InterpoladorCasco criado.")
-
-        # 5. Criar a instância de PropriedadesHidrostaticas
-        print(f"-> Criando objeto PropriedadesHidrostaticas para T={primeiro_calado:.3f}m...")
-        props_calado = PropriedadesHidrostaticas(casco_interpolado, primeiro_calado, densidade)
-        print("-> Objeto PropriedadesHidrostaticas criado.")
+        casco_interpolado = InterpoladorCasco(
+            tabela_processada, metodo_interp=dados_de_entrada['metodo_interp']
+        )
         
-        # 6. Executar o cálculo das dimensões da linha d'água
-        print("-> Executando _calcular_dimensoes_linha_dagua()...")
-        props_calado._calcular_dimensoes_linha_dagua()
-        print("-> Cálculo de dimensões finalizado.")
-
-        # 7. Exibir os resultados do teste
-        print("\n--- RESULTADOS DO TESTE ---")
-        print(f"  Calado (T): {props_calado.calado:.3f} m")
-        print(f"  Extremidade de Ré (x_re): {props_calado.x_re:.3f} m")
-        print(f"  Extremidade de Vante (x_vante): {props_calado.x_vante:.3f} m")
-        print(f"  LWL: {props_calado.lwl:.3f} m")
-        print(f"  BWL: {props_calado.bwl:.3f} m")
-        print(f"  Área do Plano de Flutuação (AWP): {props_calado.area_plano_flutuacao:.3f} m²")
-        print(f"  Volume de Carena: {props_calado.volume:.3f} m³")
-        print(f"  Deslocamento: {props_calado.deslocamento:.3f} t")
-        print("\nTeste concluído com sucesso!")
+        calculadora = CalculadoraHidrostatica(
+            casco_interpolado, densidade=float(dados_de_entrada['densidade'])
+        )
+        
+        # Executa o cálculo para todos os calados e obtém o DataFrame final
+        df_resultados = calculadora.calcular_curvas(lista_calados)
+        
+        # 5. Exibir os resultados na tabela estilizada
+        exibir_tabela_hidrostatica(df_resultados)
+    
+    # 6. Salvar os resultados, se o usuário solicitou
+        caminho_salvar = dados_de_entrada.get("caminho_salvar")
+        if caminho_salvar:
+            manipulador_arquivos.salvar_resultados_csv(df_resultados, caminho_salvar)
 
     except Exception as e:
-        print(f"\nOcorreu um erro inesperado durante o teste: {e}")
+        print(f"\nOcorreu um erro inesperado durante os cálculos: {e}")
         import traceback
         traceback.print_exc()
 

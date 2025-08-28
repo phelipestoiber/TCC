@@ -126,6 +126,31 @@ class Menu:
                 passo = float(questionary.text("Passo entre os calados:", validate=lambda val: self._validar_float(val) and float(val) <= (calado_max - calado_min)).ask())
                 dados_calado = {"metodo": "passo", "min": calado_min, "max": calado_max, "passo": passo}
 
+        # 5. Perguntar se deseja salvar os resultados
+        caminho_salvar = None
+        if questionary.confirm("Deseja salvar a tabela de resultados em um arquivo CSV?").ask():
+            path_salvar = ""
+            while not path_salvar:
+                # Sugere um caminho e nome de arquivo padrão
+                default_path = os.path.join(os.getcwd(), 'data', 'projetos_salvos', 'resultados_hidrostaticos.csv')
+                
+                path_sugerido = questionary.path(
+                    "Digite o caminho e o nome do arquivo para salvar (ex: resultados.csv):",
+                    default=default_path,
+                    validate=lambda p: p.lower().endswith('.csv'),
+                    file_filter=lambda p: p.lower().endswith('.csv')
+                ).ask()
+
+                if path_sugerido:
+                    confirmado = questionary.confirm(f"Salvar os resultados em '{path_sugerido}'?").ask()
+                    if confirmado:
+                        path_salvar = path_sugerido
+                else:
+                    # Usuário cancelou a digitação do caminho
+                    print("Opção de salvar cancelada.")
+                    break # Sai do while
+            
+            caminho_salvar = path_salvar
 
         # 5. Unir todos os dados em um único dicionário
         dados_finais = {
@@ -134,6 +159,7 @@ class Menu:
             "metodo_interp": metodo_interp,
             "referencial": referencial,
             "calados": dados_calado,
+            "caminho_salvar": caminho_salvar, 
         }
         
         return dados_finais
