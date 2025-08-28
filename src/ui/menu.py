@@ -85,6 +85,8 @@ class Menu:
             print("Operação cancelada.")
             exit()
 
+        # 3. Obter configurações de cálculo
+
         densidade=questionary.text(
             "Densidade da água (ex: 1.025):",
             default="1.025",
@@ -106,8 +108,21 @@ class Menu:
         if not referencial:
             print("Operação cancelada.")
             exit()
+
+        metodo_interp = questionary.select(
+            "Qual método de interpolação deseja usar nos cálculos?",
+            choices=[
+                "Linear",
+                "PCHIP (Cúbica, preserva a monotonia)",
+            ],
+            instruction="Linear é mais rápido. PCHIP gera curvas mais suaves."
+        ).ask()
+        
+        if not referencial or not metodo_interp:
+            print("Operação cancelada.")
+            exit()
             
-        # 3. Obter a forma de definir os calados
+        # 4. Obter a forma de definir os calados
         metodo_calado = questionary.select(
             "Como você deseja definir a faixa de calados para os cálculos?",
             choices=[

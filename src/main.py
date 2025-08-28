@@ -1,5 +1,7 @@
 from .ui.menu import Menu
 from .io.file_handler import FileHandler
+from .utils.calado_utils import gerar_lista_de_calados
+from .core.chc import InterpoladorCasco, CalculadoraHidrostatica
 import pandas as pd
 
 def main():
@@ -13,6 +15,7 @@ def main():
     try:
         dados_de_entrada = menu_principal.obter_dados_entrada()
         lpp = float(dados_de_entrada['lpp'])
+        densidade = float(dados_de_entrada['densidade'])
         
     except (KeyboardInterrupt, TypeError):
         print("\nPrograma encerrado pelo usuário.")
@@ -42,6 +45,35 @@ def main():
         print(f"\nErro no processamento de dados: {e}")
         print("A aplicação será encerrada.")
         return
+    
+    # 3. Gerar lista de calados e preparar para o cálculo
+    lista_calados = gerar_lista_de_calados(dados_de_entrada['calados'])
+    if not lista_calados:
+        print("Nenhum calado válido foi gerado. Encerrando.")
+        return
+
+    print(f"Calados a serem calculados: {[round(c, 3) for c in lista_calados]}")
+
+    # 4. Executar os cálculos hidrostáticos
+    try:
+        # Cria o objeto que define a geometria do casco via interpolação
+        casco_interpolado = InterpoladorCasco(tabela_processada)
+        
+        # Cria a calculadora que orquestrará os cálculos
+        calculadora = CalculadoraHidrostatica(casco_interpolado, densidade)
+        
+        # Executa o cálculo para todos os calados
+        df_resultados = calculadora.calcular_curvas(lista_calados)
+        
+        # 5. Exibir os resultados
+        print("\n--- CURVAS HIDROSTÁTICAS ---")
+        pd.set_option('display.max_rows', 50)
+        pd.set_option('display.width', 120) # Ajusta a largura do display
+        print(df_resultados.round(4)) # Arredonda para 4 casas decimais
+
+    except Exception as e:
+        print(f"\nOcorreu um erro inesperado durante os cálculos: {e}")
+        print("Por favor, verifique a consistência da sua tabela de cotas.")
 
     # --- Próximos Passos ---
     # 3. Processar os dados dos calados para gerar a lista final de calados
