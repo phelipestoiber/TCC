@@ -94,13 +94,12 @@ class CalculadoraEstabilidade:
         # 4. Retorna uma lista limpa, ordenada e sem duplicatas
         return sorted(list(set(raizes)))
     
-    def _calcular_propriedades_bordo(
+    def _calcular_propriedades_bombordo(
         self,
         interpolador_bb: Callable,
         limites_z_baliza: np.ndarray,
         zc: float,
         theta_graus: float,
-        eh_boreste: bool
     ) -> Tuple[float, float, float]:
         """
         Calcula a área e os momentos estáticos da secção submersa de um bordo.
@@ -120,7 +119,6 @@ class CalculadoraEstabilidade:
             limites_z_baliza (np.ndarray): Vetor com os limites verticais da baliza.
             zc (float): Altura da linha de água no plano de centro (y=0) [m].
             theta_graus (float): Ângulo de adernamento em graus.
-            eh_boreste (bool): True se for para boreste, False para bombordo.
 
         Returns:
             Tuple[float, float, float]: Tupla contendo (área [m²], momento_y [m³], momento_z [m³]).

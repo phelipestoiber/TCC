@@ -14,9 +14,14 @@ def exibir_tabela_hidrostatica(df: pd.DataFrame):
 
     # Adiciona as colunas à tabela
     for column in df.columns:
+        # Converte o nome da coluna para string antes de adicionar.
+        # Isto é crucial para a tabela KN, onde os nomes das colunas são ângulos (floats).
+        header = f"{column:.1f}" if isinstance(column, float) else str(column)
+        
         # Justifica os números à direita e o resto à esquerda
-        justify = "center" if df[column].dtype in ['float64', 'int64'] else "left"
-        table.add_column(column, justify=justify)
+        # justify = "center" if df[column].dtype in ['float64', 'int64'] else "left"
+        justify = "center"
+        table.add_column(header, justify=justify)
 
     # Adiciona as linhas com os dados formatados
     for _, row in df.iterrows():

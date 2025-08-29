@@ -60,11 +60,11 @@ def main():
     # 6. Executar os cálculos hidrostáticos
     try:
         casco_interpolado = InterpoladorCasco(
-            tabela_processada, metodo_interp=dados_hidrostaticos['metodo_interp']
+            tabela_processada, metodo_interp=metodo_interp
         )
         
         calculadora = CalculadoraHidrostatica(
-            casco_interpolado, densidade=float(dados_hidrostaticos['densidade'])
+            casco_interpolado, densidade=densidade
         )
         
         # Executa o cálculo para todos os calados e obtém o DataFrame final

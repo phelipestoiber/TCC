@@ -542,7 +542,7 @@ class PropriedadesHidrostaticas:
         """
         Método orquestrador que executa todos os cálculos na ordem correta.
         """
-        print(f"\n--- Calculando propriedades para o calado T = {self.calado:.3f} m ---")
+        # print(f"\n--- Calculando propriedades para o calado T = {self.calado:.3f} m ---")
         
         # Cálculos de geometria base
         self._calcular_dimensoes_linha_dagua()
