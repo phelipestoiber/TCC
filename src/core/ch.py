@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.interpolate import interp1d, PchipInterpolator
 from scipy.optimize import fsolve
+from src.utils.integration import integrar
 from scipy.integrate import quad
 from typing import Dict, Any, List
 import concurrent.futures
@@ -156,7 +157,7 @@ class PropriedadesHidrostaticas:
         Obtém a meia-boca (y) para uma dada estação 'x' e altura 'z' existentes.
 
         Este método consulta diretamente o dicionário de interpoladores para uma estação
-        específica. Note que ele não realiza interpolação longitudinal entre estações.
+        específica.
 
         Args:
             x (float): A coordenada longitudinal da estação a ser consultada.
@@ -177,9 +178,12 @@ class PropriedadesHidrostaticas:
             
             # Converte um possível resultado NaN para 0.0, garantindo um retorno numérico.
             # Isso é importante para interpoladores como PCHIP com extrapolate=False.
-            return float(np.nan_to_num(meia_boca))
+            return np.nan_to_num(meia_boca)
         else:
-            # Se nenhuma função exata para a estação 'x' for encontrada, retorna 0.0.
+            # Se a baliza não existe, retorna um valor compatível.
+            # Se 'z' for um array, retorna um array de zeros com o mesmo formato.
+            if isinstance(z, np.ndarray):
+                return np.zeros_like(z)
             return 0.0
         
     def _calcular_dimensoes_linha_dagua(self):
@@ -258,9 +262,8 @@ class PropriedadesHidrostaticas:
         """
         # A integral de 2 * y(z) dz de 0 a T, pode ser calculada como
         # 2 * integral de y(z) dz. A função a ser integrada é a meia-boca.
-        area_meio_casco, erro_integracao = quad(
-            lambda z: self._obter_meia_boca(x_baliza, z), 0, self.calado
-        )
+        funcao_a_integrar = lambda z: self._obter_meia_boca(x_baliza, z)
+        area_meio_casco = integrar(funcao_a_integrar, 0, self.calado)
         
         # A área total da seção é o dobro da área de meio casco.
         return area_meio_casco * 2
@@ -308,7 +311,7 @@ class PropriedadesHidrostaticas:
             self.interpolador_wl = interp1d(x_pontos_unicos, y_pontos_unicos, kind='linear', bounds_error=False, fill_value=0.0)
 
         # 5. Integra o interpolador da linha d'água para obter a meia-área.
-        meia_area, _ = quad(self.interpolador_wl, self.x_re, self.x_vante)
+        meia_area = integrar(self.interpolador_wl, self.x_re, self.x_vante)
         self.area_plano_flutuacao = meia_area * 2
         
 
@@ -344,7 +347,7 @@ class PropriedadesHidrostaticas:
             self.interpolador_areas = interp1d(x_pontos_unicos, areas_pontos_unicos, kind='linear', bounds_error=False, fill_value=0.0)
         
         # 3. Integra a curva de áreas seccionais para obter o volume.
-        volume_calculado, _ = quad(self.interpolador_areas, self.x_re, self.x_vante)
+        volume_calculado = integrar(self.interpolador_areas, self.x_re, self.x_vante)
         self.volume = volume_calculado
         
         # 4. Calcula o deslocamento (massa) a partir do volume e da densidade.
@@ -368,7 +371,7 @@ class PropriedadesHidrostaticas:
         funcao_momento_longitudinal = lambda x: x * (2 * self.interpolador_wl(x))
         
         # Integra para obter o momento longitudinal total da AWP.
-        momento_long_total, _ = quad(funcao_momento_longitudinal, self.x_re, self.x_vante)
+        momento_long_total = integrar(funcao_momento_longitudinal, self.x_re, self.x_vante)
         
         # LCF é o momento dividido pela área.
         self.lcf = momento_long_total / self.area_plano_flutuacao
@@ -390,7 +393,7 @@ class PropriedadesHidrostaticas:
         funcao_momento_longitudinal = lambda x: x * self.interpolador_areas(x)
         
         # Integra para obter o momento longitudinal do volume.
-        momento_long_volume, _ = quad(funcao_momento_longitudinal, self.x_re, self.x_vante)
+        momento_long_volume = integrar(funcao_momento_longitudinal, self.x_re, self.x_vante)
         
         # LCB é o momento de volume dividido pelo volume.
         self.lcb = momento_long_volume / self.volume
@@ -413,7 +416,7 @@ class PropriedadesHidrostaticas:
         funcao_momento = lambda z: z * (2 * self._obter_meia_boca(x_baliza, z))
         
         # Integra de 0 (quilha) até o calado atual.
-        momento_vertical, _ = quad(funcao_momento, 0, self.calado)
+        momento_vertical = integrar(funcao_momento, 0, self.calado)
         return momento_vertical
 
     def _calcular_vcb(self):
@@ -445,7 +448,7 @@ class PropriedadesHidrostaticas:
             interpolador_momentos = interp1d(x_pontos, momentos_pontos, kind='linear', bounds_error=False, fill_value=0.0)
 
         # 3. Integra a curva de momentos ao longo do LWL para obter o momento total do volume.
-        momento_total_vertical, _ = quad(interpolador_momentos, self.x_re, self.x_vante)
+        momento_total_vertical = integrar(interpolador_momentos, self.x_re, self.x_vante)
 
         # 4. VCB é o momento vertical total dividido pelo volume.
         self.vcb = momento_total_vertical / self.volume
@@ -468,8 +471,7 @@ class PropriedadesHidrostaticas:
         funcao_momento_inercia = lambda x: (2/3) * (self.interpolador_wl(x)**3)
         
         # Integra para obter o momento de inércia transversal total.
-        momento_total, _ = quad(funcao_momento_inercia, self.x_re, self.x_vante)
-        self.momento_inercia_transversal = momento_total
+        self.momento_inercia_transversal = integrar(funcao_momento_inercia, self.x_re, self.x_vante)
 
     def _calcular_momento_inercia_longitudinal(self):
         """
@@ -488,8 +490,7 @@ class PropriedadesHidrostaticas:
         funcao_momento_inercia = lambda x: ((x - self.lcf)**2) * (2 * self.interpolador_wl(x))
         
         # Integra para obter o momento de inércia longitudinal total.
-        momento_total, _ = quad(funcao_momento_inercia, self.x_re, self.x_vante)
-        self.momento_inercia_longitudinal = momento_total
+        self.momento_inercia_longitudinal = integrar(funcao_momento_inercia, self.x_re, self.x_vante)
 
     def _calcular_propriedades_derivadas(self):
         """

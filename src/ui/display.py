@@ -15,7 +15,7 @@ def exibir_tabela_hidrostatica(df: pd.DataFrame):
     # Adiciona as colunas à tabela
     for column in df.columns:
         # Justifica os números à direita e o resto à esquerda
-        justify = "right" if df[column].dtype in ['float64', 'int64'] else "left"
+        justify = "center" if df[column].dtype in ['float64', 'int64'] else "left"
         table.add_column(column, justify=justify)
 
     # Adiciona as linhas com os dados formatados

@@ -1,38 +1,45 @@
 from .ui.menu import Menu
 from .io.file_handler import FileHandler
-from .core.chc import InterpoladorCasco, CalculadoraHidrostatica
-from .utils.calado_utils import gerar_lista_de_calados
+from .core.ch import InterpoladorCasco, CalculadoraHidrostatica
+from .core.cc import CalculadoraCurvasCruzadas
+from .utils.calado_utils import gerar_lista_de_calados, gerar_lista_deslocamentos, gerar_lista_angulos
 from .ui.display import exibir_tabela_hidrostatica
-import pandas as pd
 
 def main():
     """
     Função principal que orquestra a execução do programa.
     """
     print("Iniciando aplicação naval TCC...")
-    
-    # 1. Coletar dados do usuário
-    menu_principal = Menu()
+
+    menu = Menu()
+    manipulador_arquivos = FileHandler() # Instanciar uma vez no início
+
+    # 1. Perguntar qual cálculo fazer
+    escolha = menu.obter_escolha_calculo()
+
+    # 2. Obter dados básicos e calcular a hidrostática
+    dados_hidrostaticos = menu.obter_dados_hidrostaticos()
+
+    # 3. Obtem os dados de entrada
     try:
-        dados_de_entrada = menu_principal.obter_dados_entrada()
-        lpp = float(dados_de_entrada['lpp'])
-        densidade = float(dados_de_entrada['densidade'])
-        metodo_interp = dados_de_entrada['metodo_interp']
+        nome_projeto = dados_hidrostaticos['nome_projeto']
+        lpp = float(dados_hidrostaticos['lpp'])
+        densidade = float(dados_hidrostaticos['densidade'])
+        metodo_interp = dados_hidrostaticos['metodo_interp']
         
     except (KeyboardInterrupt, TypeError):
         print("\nPrograma encerrado pelo usuário.")
         return
 
-    # 2. Ler e Processar a tabela de cotas
-    manipulador_arquivos = FileHandler()
+    # 4. Ler e Processar a tabela de cotas
     try:
         tabela_bruta = manipulador_arquivos.ler_tabela_cotas(
-            dados_de_entrada['caminho_arquivo']
+            dados_hidrostaticos['caminho_arquivo']
         )
         tabela_processada = manipulador_arquivos.processar_dados_balizas(
             tabela_bruta,
             lpp,
-            dados_de_entrada['referencial']
+            dados_hidrostaticos['referencial']
         )
         print("\n-> Tabela de Cotas lida e validada com sucesso.")
 
@@ -40,37 +47,72 @@ def main():
         print(f"\nErro no processamento de dados: {e}")
         return
 
-    # 3. Gerar lista de calados
-    lista_calados = gerar_lista_de_calados(dados_de_entrada['calados'])
+    # 5. Gerar lista de calados
+    lista_calados = gerar_lista_de_calados(dados_hidrostaticos['calados'])
     if not lista_calados:
         print("Nenhum calado válido foi gerado. Encerrando.")
         return
     
-    # 4. Executar os cálculos hidrostáticos
+    # 6. Executar os cálculos hidrostáticos
     try:
         casco_interpolado = InterpoladorCasco(
-            tabela_processada, metodo_interp=dados_de_entrada['metodo_interp']
+            tabela_processada, metodo_interp=dados_hidrostaticos['metodo_interp']
         )
         
         calculadora = CalculadoraHidrostatica(
-            casco_interpolado, densidade=float(dados_de_entrada['densidade'])
+            casco_interpolado, densidade=float(dados_hidrostaticos['densidade'])
         )
         
         # Executa o cálculo para todos os calados e obtém o DataFrame final
-        df_resultados = calculadora.calcular_curvas(lista_calados)
+        df_hidrostatico = calculadora.calcular_curvas(lista_calados)
         
-        # 5. Exibir os resultados na tabela estilizada
-        exibir_tabela_hidrostatica(df_resultados)
-    
-    # 6. Salvar os resultados, se o usuário solicitou
-        caminho_salvar = dados_de_entrada.get("caminho_salvar")
-        if caminho_salvar:
-            manipulador_arquivos.salvar_resultados_csv(df_resultados, caminho_salvar)
+        # 7. Exibir os resultados na tabela estilizada
+        exibir_tabela_hidrostatica(df_hidrostatico)
 
     except Exception as e:
         print(f"\nOcorreu um erro inesperado durante os cálculos: {e}")
         import traceback
         traceback.print_exc()
+    
+    # 8. Perguntar se quer salvar os resultados hidrostáticos
+    caminho_salvar_hidro = menu.obter_caminho_salvar(
+        tipo_resultado="hidrostáticos",
+        nome_arquivo_padrao="resultados_hidrostaticos.csv",
+        nome_projeto=nome_projeto
+    )
+    if caminho_salvar_hidro:
+        manipulador_arquivos.salvar_resultados_csv(df_hidrostatico, caminho_salvar_hidro)
+
+    # 9. Se a escolha foi apenas hidrostática, termina aqui.
+    if "Apenas" in escolha:
+        print("\nCálculo de Curvas Hidrostáticas concluído.")
+        return
+
+    # 10. Se a escolha foi Curvas Cruzadas, continuar
+    dados_kn = menu.obter_dados_curvas_cruzadas(df_hidrostatico)
+    
+    # 11. Gerar listas de deslocamentos e ângulos
+    lista_deslocamentos = gerar_lista_deslocamentos(dados_kn["deslocamentos"])
+    lista_angulos = gerar_lista_angulos(dados_kn["angulos"])
+    
+    # 12. Criar e executar a calculadora de curvas cruzadas
+    calculadora_kn = CalculadoraCurvasCruzadas(casco_interpolado, df_hidrostatico, dados_hidrostaticos)
+    df_kn = calculadora_kn.calcular_curvas_kn(lista_deslocamentos, lista_angulos)
+
+    # 13. Exibir e salvar os resultados de KN
+    exibir_tabela_hidrostatica(df_kn) # Reutilizamos o mesmo formatador de tabela
+    
+    # 14. Perguntar se quer salvar os resultados de KN
+    caminho_salvar_kn = menu.obter_caminho_salvar(
+        tipo_resultado="das curvas KN",
+        nome_arquivo_padrao="resultados_kn.csv",
+        nome_projeto=nome_projeto
+    )
+    if caminho_salvar_kn:
+        # Salvar com o índice para manter o formato de deslocamento nas linhas
+        manipulador_arquivos.salvar_resultados_csv(df_kn.set_index('Desloc. (t)'), caminho_salvar_kn)
+
+    print("\nCálculo de Curvas Cruzadas concluído.")
 
 if __name__ == '__main__':
     main()

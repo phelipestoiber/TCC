@@ -42,4 +42,23 @@ def gerar_lista_de_calados(dados_calado: Dict[str, Any]) -> List[float]:
         calados = []
 
     # Retorna a lista ordenada e sem duplicatas
-    return sorted(list(set(c for c in calados if c > 0)))
+    return sorted(list(set(c for c in calados if c >= 0)))
+
+def gerar_lista_deslocamentos(dados: Dict[str, Any]) -> List[float]:
+    """Gera uma lista de deslocamentos com base no método e valores do menu."""
+    metodo = dados.get("metodo")
+    if metodo == "numero":
+        return np.linspace(dados["min"], dados["max"], int(dados["num"])).tolist()
+    elif metodo == "passo":
+        return np.arange(dados["min"], dados["max"] + dados["passo"]/2, dados["passo"]).tolist()
+    return []
+
+def gerar_lista_angulos(dados: Dict[str, Any]) -> List[float]:
+    """Gera uma lista de ângulos com base no método e valores do menu."""
+    metodo = dados.get("metodo")
+    if metodo == "lista":
+        valores_str = dados.get("valores", "")
+        return [float(c.strip()) for c in valores_str.split(';') if c.strip()]
+    elif metodo == "passo":
+        return np.arange(dados["min"], dados["max"] + dados["passo"]/2, dados["passo"]).tolist()
+    return []
