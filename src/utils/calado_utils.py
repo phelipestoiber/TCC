@@ -45,20 +45,77 @@ def gerar_lista_de_calados(dados_calado: Dict[str, Any]) -> List[float]:
     return sorted(list(set(c for c in calados if c >= 0)))
 
 def gerar_lista_deslocamentos(dados: Dict[str, Any]) -> List[float]:
-    """Gera uma lista de deslocamentos com base no método e valores do menu."""
+    """
+    Gera uma lista de deslocamentos com base no método e nos valores
+    fornecidos pelo utilizador.
+
+    Args:
+        dados (Dict[str, Any]): O dicionário de deslocamentos vindo do menu.
+
+    Returns:
+        List[float]: Uma lista ordenada de deslocamentos para os cálculos.
+    """
     metodo = dados.get("metodo")
-    if metodo == "numero":
-        return np.linspace(dados["min"], dados["max"], int(dados["num"])).tolist()
+    deslocamentos = []
+    
+    if metodo == "lista":
+        # Converte a string "100; 200; 300" numa lista de floats.
+        valores_str = dados.get("valores", "")
+        deslocamentos = [float(c.strip()) for c in valores_str.split(';') if c.strip()]
+    
+    elif metodo == "numero":
+        # Gera N deslocamentos igualmente espaçados entre o mínimo e o máximo.
+        deslocamentos = np.linspace(
+            dados["min"], 
+            dados["max"], 
+            int(dados["num"])
+        ).tolist()
+
     elif metodo == "passo":
-        return np.arange(dados["min"], dados["max"] + dados["passo"]/2, dados["passo"]).tolist()
-    return []
+        # Gera deslocamentos com um passo definido.
+        deslocamentos = np.arange(
+            dados["min"], 
+            dados["max"] + dados["passo"]/2, # Garante a inclusão do limite superior.
+            dados["passo"]
+        ).tolist()
+    
+    # Retorna a lista ordenada, sem duplicatas e com valores não negativos.
+    return sorted(list(set(d for d in deslocamentos if d >= 0)))
 
 def gerar_lista_angulos(dados: Dict[str, Any]) -> List[float]:
-    """Gera uma lista de ângulos com base no método e valores do menu."""
+    """
+    Gera uma lista de ângulos com base no método e nos valores
+    fornecidos pelo utilizador.
+
+    Args:
+        dados (Dict[str, Any]): O dicionário de ângulos vindo do menu.
+
+    Returns:
+        List[float]: Uma lista ordenada de ângulos para os cálculos.
+    """
     metodo = dados.get("metodo")
+    angulos = []
+    
     if metodo == "lista":
+        # Converte a string "0; 10; 20" numa lista de floats.
         valores_str = dados.get("valores", "")
-        return [float(c.strip()) for c in valores_str.split(';') if c.strip()]
+        angulos = [float(c.strip()) for c in valores_str.split(';') if c.strip()]
+    
+    elif metodo == "numero":
+        # Gera N ângulos igualmente espaçados entre o mínimo e o máximo.
+        angulos = np.linspace(
+            dados["min"], 
+            dados["max"], 
+            int(dados["num"])
+        ).tolist()
+
     elif metodo == "passo":
-        return np.arange(dados["min"], dados["max"] + dados["passo"]/2, dados["passo"]).tolist()
-    return []
+        # Gera ângulos com um passo definido.
+        angulos = np.arange(
+            dados["min"], 
+            dados["max"] + dados["passo"]/2, # Garante a inclusão do limite superior.
+            dados["passo"]
+        ).tolist()
+    
+    # Retorna a lista ordenada, sem duplicatas e com valores não negativos.
+    return sorted(list(set(a for a in angulos if a >= 0)))

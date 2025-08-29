@@ -624,7 +624,7 @@ class CalculadoraHidrostatica:
             pd.DataFrame: Um DataFrame do pandas contendo a tabela de curvas hidrostáticas.
         """
         start_time = time.perf_counter()
-        print(f"\n-> Iniciando cálculo PARALELO para {len(lista_de_calados)} calados...")
+        # print(f"\n-> Iniciando cálculo PARALELO para {len(lista_de_calados)} calados...")
         
         # Prepara a lista de tarefas. Cada tarefa é uma tupla de argumentos
         # para a nossa função 'worker'.

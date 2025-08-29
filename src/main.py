@@ -5,6 +5,10 @@ from .core.cc import CalculadoraCurvasCruzadas
 from .utils.calado_utils import gerar_lista_de_calados, gerar_lista_deslocamentos, gerar_lista_angulos
 from .ui.display import exibir_tabela_hidrostatica
 
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+
 def main():
     """
     Função principal que orquestra a execução do programa.
@@ -94,6 +98,8 @@ def main():
     # 11. Gerar listas de deslocamentos e ângulos
     lista_deslocamentos = gerar_lista_deslocamentos(dados_kn["deslocamentos"])
     lista_angulos = gerar_lista_angulos(dados_kn["angulos"])
+
+    print(f"\n-> Gerados {len(lista_deslocamentos)} deslocamentos e {len(lista_angulos)} ângulos para os cálculos de KN.")
     
     # 12. Criar e executar a calculadora de curvas cruzadas
     calculadora_kn = CalculadoraCurvasCruzadas(casco_interpolado, df_hidrostatico, dados_hidrostaticos)
