@@ -1,6 +1,6 @@
 import questionary
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 
 class Menu:
@@ -36,7 +36,7 @@ class Menu:
         except ValueError:
             return False
 
-    def _validar_int_maior_2(self, text: str) -> bool:
+    def _validar_int_min_dois(self, text: str) -> bool:
         """Validador para garantir que a entrada seja um inteiro >= 2."""
         if not text:
             return False
@@ -54,6 +54,23 @@ class Menu:
             [float(c.strip()) for c in text.split(';')]
             return True
         except ValueError:
+            return False
+        
+    def _validar_lista_com_5_numeros(self, text: str) -> bool:
+        """Validador para uma string que deve conter exatamente 5 números."""
+        if not text: return False
+        try:
+            partes = [p.strip() for p in text.split(';') if p.strip()]
+            if len(partes) != 5:
+                # Retorna uma mensagem de erro específica para o questionary
+                raise questionary.ValidationError(
+                    message="Por favor, insira exatamente 5 valores separados por ';'."
+                )
+            # Tenta converter todos para float para garantir que são números
+            for parte in partes:
+                float(parte)
+            return True
+        except (ValueError, IndexError):
             return False
         
     def deseja_prosseguir(self, proximo_passo: str) -> bool:
@@ -156,7 +173,7 @@ class Menu:
                 exit()
 
             if "número" in metodo_calado:
-                num_calados = int(questionary.text("Número de calados:", validate=self._validar_int_maior_2).ask())
+                num_calados = int(questionary.text("Número de calados:", validate=self._validar_int_min_dois).ask())
                 dados_calado = {"metodo": "numero", "min": calado_min, "max": calado_max, "num": num_calados}
             
             else: # Opção de passo
@@ -213,7 +230,7 @@ class Menu:
                 exit()
 
             if "número" in metodo_deslocamento:
-                num_deslocamentos = int(questionary.text("Número de deslocamentos:", validate=self._validar_int_maior_2).ask())
+                num_deslocamentos = int(questionary.text("Número de deslocamentos:", validate=self._validar_int_min_dois).ask())
                 dados_deslocamento = {"metodo": "numero", "min": deslocamento_min, "max": deslocamento_max, "num": num_deslocamentos}
             
             else: # Opção de passo
@@ -252,7 +269,7 @@ class Menu:
                 exit()
 
             if "número" in metodo_angulo:
-                num_angulos = int(questionary.text("Número de ângulos:", validate=self._validar_int_maior_2).ask())
+                num_angulos = int(questionary.text("Número de ângulos:", validate=self._validar_int_min_dois).ask())
                 dados_angulo = {"metodo": "numero", "min": angulo_min, "max": angulo_max, "num": num_angulos}
             
             else: # Opção de passo
@@ -265,7 +282,7 @@ class Menu:
     
     def obter_dados_rpi(self) -> Dict[str, Any]:
         """Recolhe os dados de entrada iniciais para o Relatório de Prova de Inclinação."""
-        print("\n--- MÓDULO 3: Entrada de Dados para a Prova de Inclinação ---")
+        print("\n--- Entrada de Dados para a Prova de Inclinação ---")
 
         # Metodo de medição dos ângulos de inclinação
         metodo_inclinacao = questionary.select(
@@ -366,22 +383,27 @@ class Menu:
         #  1. Pessoas a bordo (sempre)
         print("\n--- Itens a Deduzir (Automático) ---")
         dados_pessoas = questionary.form(
-            peso=questionary.text("Peso total das pessoas a bordo [t]:", validate=self._validar_float),
+            peso=questionary.text("Peso total das pessoas a bordo [t]:", validate=self._validar_float_positivo),
             lcg=questionary.text("LCG médio das pessoas [m]:", validate=self._validar_float_qualquer),
-            vcg=questionary.text("VCG médio das pessoas [m]:", validate=self._validar_float),
+            vcg=questionary.text("VCG médio das pessoas [m]:", validate=self._validar_float_positivo),
         ).ask()
         if not dados_pessoas: print("Operação cancelada."); exit()
 
-        # Perguntar sobre os pesos da prova (apenas se forem sólidos)
-        # 2. Pesos da prova (condicional)
-        dados_pesos_prova = {}
+        # Perguntar sobre os 4 pesos da prova (apenas se forem sólidos)
+        lista_pesos_prova = []
         if "sólidos" in tipo_pesos:
-            dados_pesos_prova = questionary.form(
-                peso=questionary.text("Peso total dos pesos da prova [t]:", validate=self._validar_float),
-                lcg=questionary.text("LCG médio dos pesos da prova [m]:", validate=self._validar_float_qualquer),
-                vcg=questionary.text("VCG médio dos pesos da prova [m]:", validate=self._validar_float),
-            ).ask()
-            if not dados_pesos_prova: print("Operação cancelada."); exit()
+            print("\n--- Dados para os 4 Pesos da Prova de Inclinação ---")
+            # Loop para recolher os dados de cada um dos 4 pesos
+            for i in range(4):
+                print(f"--- Dados para o Peso da Prova nº {i+1}/4 ---")
+                dados_peso_individual = questionary.form(
+                    peso=questionary.text("Peso [t]:", validate=self._validar_float_positivo),
+                    lcg=questionary.text("Posição Longitudinal (LCG) [m]:", validate=self._validar_float_qualquer),
+                    vcg=questionary.text("Posição Vertical (VCG) [m]:", validate=self._validar_float_positivo),
+                    tcg=questionary.text("Posição Transversal (TCG) [m]:", validate=self._validar_float_qualquer),
+                ).ask()
+                if not dados_peso_individual: print("Operação cancelada."); exit()
+                lista_pesos_prova.append(dados_peso_individual)
 
         # Perguntar sobre OUTROS itens a deduzir
         # 3. Outros itens a deduzir (se houver)
@@ -396,20 +418,23 @@ class Menu:
             "nome": "Pessoas a bordo",
             **dados_pessoas
         })
-        # Se os pesos da prova eram sólidos, adiciona-os também
-        if dados_pesos_prova:
-            itens_a_deduzir.append({
-                "nome": "Pesos da prova de inclinação",
-                **dados_pesos_prova
-            })
+        # Adiciona cada um dos 4 pesos da prova à lista
+        if lista_pesos_prova:
+            for i, peso_info in enumerate(lista_pesos_prova):
+                itens_a_deduzir.append({
+                    "nome": f"Peso da prova de inclinação nº {i+1}",
+                    **peso_info
+                })
         # Adiciona os outros itens que o utilizador inseriu manualmente
         itens_a_deduzir.extend(outros_itens_a_deduzir)
-        
 
         # Perguntar sobre itens a acrescentar
         itens_a_acrescentar = []
         if questionary.confirm("\nHá pesos a serem ACRESCENTADOS para a condição final (leve)?").ask():
             itens_a_acrescentar = self._obter_lista_de_itens("Itens a Acrescentar")
+
+        # Obter os dados brutos dos pêndulos ou tubos em U
+        dados_leituras = self._obter_dados_leituras_inclinacao(metodo_inclinacao)
 
         # Junta todas as informações num único dicionário e retorna
         dados_finais_rpi = {
@@ -419,14 +444,68 @@ class Menu:
             "densidades_medidas": densidades_medidas,
             "dados_tanques": lista_tanques,
             "itens_a_deduzir": itens_a_deduzir,
-            "itens_a_acrescentar": itens_a_acrescentar
+            "itens_a_acrescentar": itens_a_acrescentar,
+            "dados_leituras": dados_leituras
         }
 
-
-
-
-
         return dados_finais_rpi
+    
+    def _obter_dados_leituras_inclinacao(self, metodo_inclinacao: str) -> Dict[str, Any]:
+        """
+        Método auxiliar para recolher os dados brutos dos pêndulos ou tubos em U.
+        """
+        dados_leituras = {}
+        # --- PÊNDULOS ---
+        if "Pêndulos" in metodo_inclinacao:
+            num_dispositivos = int(questionary.text(
+                "Quantos pêndulos foram utilizados?",
+                default="3",
+                validate=self._validar_int_min_dois
+            ).ask())
+            
+            lista_pendulos = []
+            for i in range(num_dispositivos):
+                print(f"\n--- Dados para o Pêndulo nº {i+1}/{num_dispositivos} ---")
+                comprimento = float(questionary.text("Comprimento do pêndulo [m]:", validate=self._validar_float_positivo).ask())
+                leituras_movimentos = []
+                for mov in range(9): # Movimento 0 (inicial) + 8 movimentos
+                    print(f"  --- Leituras para o Movimento nº {mov} ---")
+                    leituras = questionary.form(
+                        maximos=questionary.text("5 leituras MÁXIMAS (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
+                        minimos=questionary.text("5 leituras MÍNIMAS (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
+                    ).ask()
+                    if not leituras: print("Operação cancelada."); exit()
+                    leituras_movimentos.append(leituras)
+                lista_pendulos.append({"comprimento": comprimento, "leituras": leituras_movimentos})
+            dados_leituras["pendulos"] = lista_pendulos
+
+        # --- TUBOS EM U ---
+        else:
+            num_dispositivos = int(questionary.text(
+                "Quantos tubos em U foram utilizados?",
+                default="3",
+                validate=self._validar_int_min_dois
+            ).ask())
+
+            lista_tubos = []
+            for i in range(num_dispositivos):
+                print(f"\n--- Dados para o Tubo em U nº {i+1}/{num_dispositivos} ---")
+                distancia = float(questionary.text("Distância entre as partes verticais do tubo [m]:", validate=self._validar_float_positivo).ask())
+                leituras_movimentos = []
+                for mov in range(9): # Movimento 0 (inicial) + 8 movimentos
+                    print(f"  --- Leituras para o Movimento nº {mov} ---")
+                    leituras = questionary.form(
+                        maximos_bb=questionary.text("5 leituras MÁXIMAS em Bombordo (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
+                        minimos_bb=questionary.text("5 leituras MÍNIMAS em Bombordo (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
+                        maximos_be=questionary.text("5 leituras MÁXIMAS em Boreste (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
+                        minimos_be=questionary.text("5 leituras MÍNIMAS em Boreste (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
+                    ).ask()
+                    if not leituras: print("Operação cancelada."); exit()
+                    leituras_movimentos.append(leituras)
+                lista_tubos.append({"distancia_vertical": distancia, "leituras": leituras_movimentos})
+            dados_leituras["tubos"] = lista_tubos
+
+        return dados_leituras
     
     def _obter_lista_de_itens(self, titulo_secao: str) -> List[Dict[str, Any]]:
         """
@@ -450,9 +529,9 @@ class Menu:
             print(f"\n--- Dados para o {titulo_secao} nº {i+1}/{num_itens} ---")
             dados_item = questionary.form(
                 nome=questionary.text("Nome do Item:"),
-                peso=questionary.text("Peso [t]:", validate=self._validar_float),
+                peso=questionary.text("Peso [t]:", validate=self._validar_float_positivo),
                 lcg=questionary.text("Posição Longitudinal do CG (LCG) [m]:", validate=self._validar_float_qualquer),
-                vcg=questionary.text("Posição Vertical do CG (VCG) [m]:", validate=self._validar_float),
+                vcg=questionary.text("Posição Vertical do CG (VCG) [m]:", validate=self._validar_float_positivo),
             ).ask()
             if not dados_item: print("Operação cancelada."); exit()
             lista_itens.append(dados_item)

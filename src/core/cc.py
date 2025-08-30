@@ -560,7 +560,7 @@ class PropriedadesCruzadas:
         
         except Exception:
             # Se fsolve falhar, tenta um método mais robusto (brentq) com um intervalo definido.
-            print(f"AVISO: fsolve falhou. Tentando com brentq para theta = {theta_graus:.1f}°...")
+            # print(f"AVISO: fsolve falhou. Tentando com brentq para theta = {theta_graus:.1f}°...")
             try:
                 tan_theta_abs = abs(np.tan(np.deg2rad(theta_graus)))
                 # Define um intervalo de busca para zc que realisticamente contém a solução.
@@ -573,7 +573,7 @@ class PropriedadesCruzadas:
                 resultado_brentq = brentq(funcao_objetivo, a=zc_min_busca, b=zc_max_busca, full_output=True)
                 zc_solucao = resultado_brentq[0]
                 iteracoes = resultado_brentq[1].iterations
-                print(f"brentq encontrou zc = {zc_solucao:.4f} m em {iteracoes} iterações.")
+                # print(f"brentq encontrou zc = {zc_solucao:.4f} m em {iteracoes} iterações.")
 
             except Exception as e:
                 # Se ambos os solvers falharem, a condição é provavelmente instável.
