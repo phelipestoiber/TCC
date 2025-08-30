@@ -551,10 +551,10 @@ class PropriedadesCruzadas:
             if erro_final < 0.01 * volume_desejado: # Aceita um erro de até 1%
                 zc_solucao = zc_fsolve
                 iteracoes = iteracoes_fsolve
-                print(f"fsolve encontrou zc = {zc_solucao:.4f} m em {iteracoes} iterações.")
+                # print(f"fsolve encontrou zc = {zc_solucao:.4f} m em {iteracoes} iterações.")
             else:
                 # Se o erro for grande, rejeita a solução do fsolve e força o fallback.
-                print(f"AVISO: fsolve convergiu para uma solução com erro alto ({erro_final:.2f} m³). A tentar com brentq...")
+                # print(f"AVISO: fsolve convergiu para uma solução com erro alto ({erro_final:.2f} m³). A tentar com brentq...")
                 raise ValueError("Solução do fsolve imprecisa.")
             
         
@@ -591,8 +591,6 @@ class PropriedadesCruzadas:
         # O centroide é o momento de volume dividido pelo volume.
         y_cb = momento_y_total / volume_final if volume_final > 1e-6 else 0.0
         z_cb = momento_z_total / volume_final if volume_final > 1e-6 else 0.0
-
-        print(f"volume = {volume_final}, y = {y_cb}, z = {z_cb}")
 
         return zc_solucao, y_cb, z_cb, volume_final, iteracoes
 

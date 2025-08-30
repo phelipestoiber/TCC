@@ -2,7 +2,7 @@ from .ui.menu import Menu
 from .io.file_handler import FileHandler
 from .core.ch import InterpoladorCasco, CalculadoraHidrostatica
 from .core.cc import CalculadoraCurvasCruzadas
-from .utils.calado_utils import gerar_lista_de_calados, gerar_lista_deslocamentos, gerar_lista_angulos
+from .utils.list_utils import gerar_lista_de_calados, gerar_lista_deslocamentos, gerar_lista_angulos
 from .ui.display import exibir_tabela_hidrostatica
 
 import warnings
@@ -116,7 +116,7 @@ def main():
     )
     if caminho_salvar_kn:
         # Salvar com o índice para manter o formato de deslocamento nas linhas
-        manipulador_arquivos.salvar_resultados_csv(df_kn.set_index('Desloc. (t)'), caminho_salvar_kn)
+        manipulador_arquivos.salvar_resultados_csv(df_kn, caminho_salvar_kn)
 
     print("\nCálculo de Curvas Cruzadas concluído.")
 
