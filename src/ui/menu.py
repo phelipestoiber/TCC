@@ -8,7 +8,7 @@ class Menu:
     Gerencia a interface do usuário no terminal para a entrada de dados.
     """
 
-    def _validar_float(self, text: str) -> bool:
+    def _validar_float_positivo(self, text: str) -> bool:
         """Validador para garantir que a entrada seja um float positivo ou zero."""
         if not text:
             return False
@@ -17,8 +17,26 @@ class Menu:
             return value >= 0
         except ValueError:
             return False
+        
+    def _validar_float_qualquer(self, text: str) -> bool:
+        """Validador para garantir que a entrada seja um float qualquer (pos, neg ou zero)."""
+        if not text: return False
+        try:
+            float(text)
+            return True
+        except ValueError:
+            return False
+        
+    def _validar_int_positivo(self, text: str) -> bool:
+        """Validador para garantir que a entrada seja um inteiro positivo."""
+        if not text: return False
+        try:
+            value = int(text)
+            return value > 0
+        except ValueError:
+            return False
 
-    def _validar_int(self, text: str) -> bool:
+    def _validar_int_maior_2(self, text: str) -> bool:
         """Validador para garantir que a entrada seja um inteiro >= 2."""
         if not text:
             return False
@@ -38,22 +56,26 @@ class Menu:
         except ValueError:
             return False
         
-    def obter_escolha_calculo(self) -> str:
-        """Pergunta ao utilizador qual o principal tipo de cálculo a ser realizado."""
-        escolha = questionary.select(
-            "Qual cálculo deseja realizar?",
-            choices=[
-                "1. Apenas Curvas Hidrostáticas",
-                "2. Curvas Cruzadas de Estabilidade (KN)",
-            ]
+    def deseja_prosseguir(self, proximo_passo: str) -> bool:
+        """
+        Apresenta uma pergunta de confirmação genérica ao utilizador.
+
+        Args:
+            proximo_passo (str): O nome do próximo módulo/cálculo.
+
+        Returns:
+            bool: True se o utilizador confirmar, False caso contrário.
+        """
+        return questionary.confirm(
+            f"Deseja prosseguir para o {proximo_passo}?",
+            default=True
         ).ask()
-        return escolha
 
     def obter_dados_hidrostaticos(self) -> Dict[str, Any]:
         """
         Coleta todos os dados de entrada necessários do usuário de forma interativa.
         """
-        print("--- TCC Naval - Entrada de Dados ---")
+        # print("--- TCC Naval - Entrada de Dados ---")
         print("Por favor, forneça as informações a seguir:\n")
 
         # 1. Obtem o nome da embarcação/projeto e o caminho do arquivo CSV
@@ -78,10 +100,10 @@ class Menu:
         
         # 2. Obter características da embarcação e densidade
         dados_embarcacao = questionary.form(
-            lpp=questionary.text("Comprimento entre perpendiculares (Lpp) em metros:", validate=self._validar_float, default="19.713"),
-            boca=questionary.text("Boca moldada em metros:", validate=self._validar_float, default="6"),
-            pontal=questionary.text("Pontal moldado em metros:", validate=self._validar_float, default="3"),
-            densidade=questionary.text("Densidade da água (ex: 1.025):", default="1.025", validate=self._validar_float)
+            lpp=questionary.text("Comprimento entre perpendiculares (Lpp) em metros:", validate=self._validar_float_positivo, default="19.713"),
+            boca=questionary.text("Boca moldada em metros:", validate=self._validar_float_positivo, default="6"),
+            pontal=questionary.text("Pontal moldado em metros:", validate=self._validar_float_positivo, default="3"),
+            densidade=questionary.text("Densidade da água (ex: 1.025):", default="1.025", validate=self._validar_float_positivo)
         ).ask()
 
         if not dados_embarcacao:
@@ -119,8 +141,8 @@ class Menu:
         else: # Opções de min/max
             # Utiliza um form para pegar min e max juntos, o que é mais robusto
             calados_min_max = questionary.form(
-                calado_min=questionary.text("Calado mínimo:", validate=lambda val: self._validar_float(val) and float(val) < float(dados_embarcacao['pontal'])),
-                calado_max=questionary.text("Calado máximo:", validate=lambda val: self._validar_float(val) and float(val) <= float(dados_embarcacao['pontal']))
+                calado_min=questionary.text("Calado mínimo:", validate=lambda val: self._validar_float_positivo(val) and float(val) < float(dados_embarcacao['pontal'])),
+                calado_max=questionary.text("Calado máximo:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= float(dados_embarcacao['pontal']))
             ).ask()
 
             if not calados_min_max:
@@ -134,11 +156,11 @@ class Menu:
                 exit()
 
             if "número" in metodo_calado:
-                num_calados = int(questionary.text("Número de calados:", validate=self._validar_int).ask())
+                num_calados = int(questionary.text("Número de calados:", validate=self._validar_int_maior_2).ask())
                 dados_calado = {"metodo": "numero", "min": calado_min, "max": calado_max, "num": num_calados}
             
             else: # Opção de passo
-                passo = float(questionary.text("Passo entre os calados:", validate=lambda val: self._validar_float(val) and float(val) <= (calado_max - calado_min)).ask())
+                passo = float(questionary.text("Passo entre os calados:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= (calado_max - calado_min)).ask())
                 dados_calado = {"metodo": "passo", "min": calado_min, "max": calado_max, "passo": passo}
 
         # 5. Unir todos os dados em um único dicionário
@@ -176,8 +198,8 @@ class Menu:
         else: # Opções de min/max
             # Utiliza um form para pegar min e max juntos, o que é mais robusto
             deslocamentos_min_max = questionary.form(
-                deslocamento_min=questionary.text("Deslocamento mínimo:", validate=lambda val: self._validar_float(val)),
-                deslocamento_max=questionary.text("Deslocamento máximo:", validate=lambda val: self._validar_float(val))
+                deslocamento_min=questionary.text("Deslocamento mínimo:", validate=lambda val: self._validar_float_positivo(val)),
+                deslocamento_max=questionary.text("Deslocamento máximo:", validate=lambda val: self._validar_float_positivo(val))
             ).ask()
 
             if not deslocamentos_min_max:
@@ -191,11 +213,11 @@ class Menu:
                 exit()
 
             if "número" in metodo_deslocamento:
-                num_deslocamentos = int(questionary.text("Número de deslocamentos:", validate=self._validar_int).ask())
+                num_deslocamentos = int(questionary.text("Número de deslocamentos:", validate=self._validar_int_maior_2).ask())
                 dados_deslocamento = {"metodo": "numero", "min": deslocamento_min, "max": deslocamento_max, "num": num_deslocamentos}
             
             else: # Opção de passo
-                passo = float(questionary.text("Passo entre os deslocamentos:", validate=lambda val: self._validar_float(val) and float(val) <= (deslocamento_max - deslocamento_min)).ask())
+                passo = float(questionary.text("Passo entre os deslocamentos:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= (deslocamento_max - deslocamento_min)).ask())
                 dados_deslocamento = {"metodo": "passo", "min": deslocamento_min, "max": deslocamento_max, "passo": passo}
 
         # 2. Obter a forma de definir os ângulos
@@ -215,8 +237,8 @@ class Menu:
         else: # Opções de min/max
             # Utiliza um form para pegar min e max juntos, o que é mais robusto
             angulos_min_max = questionary.form(
-                angulo_min=questionary.text("Ângulo mínimo:", validate=lambda val: self._validar_float(val)),
-                angulo_max=questionary.text("Ângulo máximo:", validate=lambda val: self._validar_float(val))
+                angulo_min=questionary.text("Ângulo mínimo:", validate=lambda val: self._validar_float_positivo(val)),
+                angulo_max=questionary.text("Ângulo máximo:", validate=lambda val: self._validar_float_positivo(val))
             ).ask()
 
             if not angulos_min_max:
@@ -230,16 +252,130 @@ class Menu:
                 exit()
 
             if "número" in metodo_angulo:
-                num_angulos = int(questionary.text("Número de ângulos:", validate=self._validar_int).ask())
+                num_angulos = int(questionary.text("Número de ângulos:", validate=self._validar_int_maior_2).ask())
                 dados_angulo = {"metodo": "numero", "min": angulo_min, "max": angulo_max, "num": num_angulos}
             
             else: # Opção de passo
-                passo = float(questionary.text("Passo entre os ângulos:", validate=lambda val: self._validar_float(val) and float(val) <= (angulo_max - angulo_min)).ask())
+                passo = float(questionary.text("Passo entre os ângulos:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= (angulo_max - angulo_min)).ask())
                 dados_angulo = {"metodo": "passo", "min": angulo_min, "max": angulo_max, "passo": passo}
             
         dados_finais = {"deslocamentos": dados_deslocamento, "angulos": dados_angulo}
             
         return dados_finais
+    
+    def obter_dados_rpi(self) -> Dict[str, Any]:
+        """Recolhe os dados de entrada iniciais para o Relatório de Prova de Inclinação."""
+        print("\n--- MÓDULO 3: Entrada de Dados para a Prova de Inclinação ---")
+
+        # Metodo de medição dos ângulos de inclinação
+        metodo_inclinacao = questionary.select(
+            "Qual método foi usado para medir os ângulos de inclinação?",
+            choices=["Pêndulos", "Tubos em U"]
+        ).ask()
+        if not metodo_inclinacao: print("Operação cancelada."); exit()
+
+        # Tipo de pesos movimentados
+        tipo_pesos = questionary.select(
+            "Qual tipo de peso foi movimentado durante a prova?",
+            choices=["Pesos sólidos", "Pesos líquidos (lastro)"]
+        ).ask()
+        if not tipo_pesos: print("Operação cancelada."); exit()
+
+        # Tipo de medição da condição de flutuação
+        metodo_flutuacao = questionary.select(
+            "Como foi determinada a condição de flutuação da embarcação?",
+            choices=[
+                "Leitura direta dos calados",
+                "Medição das bordas livres"
+            ]
+        ).ask()
+        if not metodo_flutuacao: print("Operação cancelada."); exit()
+
+        dados_flutuacao = {"metodo": metodo_flutuacao}
+        
+        # Condicional para leitura de calados
+        if "calados" in metodo_flutuacao:
+            print("\nPor favor, insira os calados lidos.")
+            calados_lidos = questionary.form(
+                bb_re=questionary.text("Calado a bombordo, a Ré [m]:", validate=self._validar_float_positivo),
+                bb_meio=questionary.text("Calado a bombordo, a Meio-Navio [m]:", validate=self._validar_float_positivo),
+                bb_vante=questionary.text("Calado a bombordo, a Vante [m]:", validate=self._validar_float_positivo),
+                be_re=questionary.text("Calado a boreste, a Ré [m]:", validate=self._validar_float_positivo),
+                be_meio=questionary.text("Calado a boreste, a Meio-Navio [m]:", validate=self._validar_float_positivo),
+                be_vante=questionary.text("Calado a boreste, a Vante [m]:", validate=self._validar_float_positivo),
+            ).ask()
+            if not calados_lidos: print("Operação cancelada."); exit()
+            dados_flutuacao.update(calados_lidos)
+
+        # Condicional para medição de bordas livres
+        else: # "bordas livres"
+            print("\nPor favor, insira as informações sobre a medição das bordas livres.")
+            dados_bordas_livres = questionary.form(
+                # Posições longitudinais das marcas de calado
+                lr=questionary.text("Posição longitudinal da marca de Ré (LR) [m]:", validate=self._validar_float_qualquer),
+                lm=questionary.text("Posição longitudinal da marca de Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer),
+                lv=questionary.text("Posição longitudinal da marca de Vante (LV) [m]:", validate=self._validar_float_qualquer),
+                # Pontais nos locais de medição
+                pontal_re=questionary.text("Pontal moldado no local da medição a Ré [m]:", validate=self._validar_float_positivo),
+                pontal_meio=questionary.text("Pontal moldado no local da medição a Meio-Navio [m]:", validate=self._validar_float_positivo),
+                pontal_vante=questionary.text("Pontal moldado no local da medição a Vante [m]:", validate=self._validar_float_positivo),
+                # Leituras das bordas livres
+                bl_bb_re=questionary.text("Borda Livre a Bombordo, a Ré [m]:", validate=self._validar_float_positivo),
+                bl_be_re=questionary.text("Borda Livre a Boreste, a Ré [m]:", validate=self._validar_float_positivo),
+                bl_bb_meio=questionary.text("Borda Livre a Bombordo, a Meio-Navio [m]:", validate=self._validar_float_positivo),
+                bl_be_meio=questionary.text("Borda Livre a Boreste, a Meio-Navio [m]:", validate=self._validar_float_positivo),
+                bl_bb_vante=questionary.text("Borda Livre a Bombordo, a Vante [m]:", validate=self._validar_float_positivo),
+                bl_be_vante=questionary.text("Borda Livre a Boreste, a Vante [m]:", validate=self._validar_float_positivo),
+            ).ask()
+            if not dados_bordas_livres: print("Operação cancelada."); exit()
+            dados_flutuacao.update(dados_bordas_livres)
+
+        # Densidades medidas no local
+        print("\nPor favor, insira as densidades da água [t/m³] medidas no local.")
+        densidades_medidas = questionary.form(
+            re=questionary.text("Densidade a Ré:", validate=self._validar_float_positivo),
+            meio=questionary.text("Densidade a Meio-Navio:", validate=self._validar_float_positivo),
+            vante=questionary.text("Densidade a Vante:", validate=self._validar_float_positivo),
+        ).ask()
+        if not densidades_medidas: print("Operação cancelada."); exit()
+
+        # Dados dos tanques (se houver)
+        lista_tanques = []
+        if questionary.confirm("\nForam sondados tanques com líquidos a bordo?").ask():
+            num_tanques_str = questionary.text(
+                "Quantos tanques foram sondados?",
+                validate=self._validar_int_positivo
+            ).ask()
+            num_tanques = int(num_tanques_str) if num_tanques_str else 0
+
+            for i in range(num_tanques):
+                print(f"\n--- Dados para o Tanque nº {i+1}/{num_tanques} ---")
+                dados_tanque = questionary.form(
+                    nome=questionary.text("Nome do Tanque:"),
+                    sondagem=questionary.text("Altura de Sondagem/Ulage [m]:", validate=self._validar_float_positivo),
+                    volume=questionary.text("Volume do líquido no tanque [m³]:", validate=self._validar_float_positivo),
+                    pe=questionary.text("Peso Específico do líquido [t/m³]:", validate=self._validar_float_positivo),
+                    lcg=questionary.text("Posição Longitudinal do CG do tanque (LCG) [m]:", validate=self._validar_float_qualquer),
+                    vcg=questionary.text("Posição Vertical do CG do tanque (VCG) [m]:", validate=self._validar_float_positivo),
+                    mls=questionary.text("Momento de Superfície Livre do tanque [t.m]:", validate=self._validar_float_positivo),
+                ).ask()
+                if not dados_tanque: print("Operação cancelada."); exit()
+                lista_tanques.append(dados_tanque)
+
+        # Junta todas as informações num único dicionário e retorna
+        dados_finais_rpi = {
+            "metodo_inclinacao": metodo_inclinacao,
+            "tipo_pesos": tipo_pesos,
+            "dados_flutuacao": dados_flutuacao,
+            "densidades_medidas": densidades_medidas,
+            "dados_tanques": lista_tanques
+        }
+
+
+
+
+
+        return dados_finais_rpi
     
     def obter_caminho_salvar(
         self, tipo_resultado: str, nome_arquivo_padrao: str, nome_projeto: str

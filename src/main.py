@@ -19,7 +19,7 @@ def main():
     manipulador_arquivos = FileHandler() # Instanciar uma vez no início
 
     # 1. Perguntar qual cálculo fazer
-    escolha = menu.obter_escolha_calculo()
+    print("--- MÓDULO 1: CURVAS HIDROSTÁTICAS ---")
 
     # 2. Obter dados básicos e calcular a hidrostática
     dados_hidrostaticos = menu.obter_dados_hidrostaticos()
@@ -88,11 +88,12 @@ def main():
         manipulador_arquivos.salvar_resultados_csv(df_hidrostatico, caminho_salvar_hidro)
 
     # 9. Se a escolha foi apenas hidrostática, termina aqui.
-    if "Apenas" in escolha:
-        print("\nCálculo de Curvas Hidrostáticas concluído.")
+    if not menu.deseja_prosseguir("Cálculo de Curvas Cruzadas"):
+        print("\nPrograma finalizado.")
         return
 
     # 10. Se a escolha foi Curvas Cruzadas, continuar
+    print("\n--- MÓDULO 2: CURVAS CRUZADAS DE ESTABILIDADE (KN) ---")
     dados_kn = menu.obter_dados_curvas_cruzadas(df_hidrostatico)
     
     # 11. Gerar listas de deslocamentos e ângulos
@@ -119,6 +120,25 @@ def main():
         manipulador_arquivos.salvar_resultados_csv(df_kn, caminho_salvar_kn)
 
     print("\nCálculo de Curvas Cruzadas concluído.")
+
+    if not menu.deseja_prosseguir("Cálculo do Relatório de Prova de Inclinação (RPI)"):
+        print("\nPrograma finalizado.")
+        return
+    
+    print("\n--- MÓDULO 3: RELATÓRIO DE PROVA DE INCLINAÇÃO (RPI) ---")
+    # 15. Obter dados para o RPI
+    dados_rpi = menu.obter_dados_rpi()
+
+    print("\n--- DADOS RECOLHIDOS PARA O RPI ---")
+    import json
+    print(json.dumps(dados_rpi, indent=4))
+    print("-----------------------------------")
+    
+    print("\nMódulo RPI em construção... O programa será finalizado.")
+    
+    print("\nPrograma finalizado.")
+
+    
 
 if __name__ == '__main__':
     main()
