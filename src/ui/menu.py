@@ -362,13 +362,64 @@ class Menu:
                 if not dados_tanque: print("Operação cancelada."); exit()
                 lista_tanques.append(dados_tanque)
 
+        # Itens a deduzir (se houver)
+        #  1. Pessoas a bordo (sempre)
+        print("\n--- Itens a Deduzir (Automático) ---")
+        dados_pessoas = questionary.form(
+            peso=questionary.text("Peso total das pessoas a bordo [t]:", validate=self._validar_float),
+            lcg=questionary.text("LCG médio das pessoas [m]:", validate=self._validar_float_qualquer),
+            vcg=questionary.text("VCG médio das pessoas [m]:", validate=self._validar_float),
+        ).ask()
+        if not dados_pessoas: print("Operação cancelada."); exit()
+
+        # Perguntar sobre os pesos da prova (apenas se forem sólidos)
+        # 2. Pesos da prova (condicional)
+        dados_pesos_prova = {}
+        if "sólidos" in tipo_pesos:
+            dados_pesos_prova = questionary.form(
+                peso=questionary.text("Peso total dos pesos da prova [t]:", validate=self._validar_float),
+                lcg=questionary.text("LCG médio dos pesos da prova [m]:", validate=self._validar_float_qualquer),
+                vcg=questionary.text("VCG médio dos pesos da prova [m]:", validate=self._validar_float),
+            ).ask()
+            if not dados_pesos_prova: print("Operação cancelada."); exit()
+
+        # Perguntar sobre OUTROS itens a deduzir
+        # 3. Outros itens a deduzir (se houver)
+        outros_itens_a_deduzir = []
+        if questionary.confirm("\nHá OUTROS pesos a serem deduzidos (ex: lixo, equipamentos extras)?").ask():
+            outros_itens_a_deduzir = self._obter_lista_de_itens("Outros Itens a Deduzir")
+
+        # --- LÓGICA DE CONSTRUÇÃO DA LISTA FINAL DE DEDUÇÕES ---
+        itens_a_deduzir = []
+        # Adiciona o item "Pessoas a bordo" à lista
+        itens_a_deduzir.append({
+            "nome": "Pessoas a bordo",
+            **dados_pessoas
+        })
+        # Se os pesos da prova eram sólidos, adiciona-os também
+        if dados_pesos_prova:
+            itens_a_deduzir.append({
+                "nome": "Pesos da prova de inclinação",
+                **dados_pesos_prova
+            })
+        # Adiciona os outros itens que o utilizador inseriu manualmente
+        itens_a_deduzir.extend(outros_itens_a_deduzir)
+        
+
+        # Perguntar sobre itens a acrescentar
+        itens_a_acrescentar = []
+        if questionary.confirm("\nHá pesos a serem ACRESCENTADOS para a condição final (leve)?").ask():
+            itens_a_acrescentar = self._obter_lista_de_itens("Itens a Acrescentar")
+
         # Junta todas as informações num único dicionário e retorna
         dados_finais_rpi = {
             "metodo_inclinacao": metodo_inclinacao,
             "tipo_pesos": tipo_pesos,
             "dados_flutuacao": dados_flutuacao,
             "densidades_medidas": densidades_medidas,
-            "dados_tanques": lista_tanques
+            "dados_tanques": lista_tanques,
+            "itens_a_deduzir": itens_a_deduzir,
+            "itens_a_acrescentar": itens_a_acrescentar
         }
 
 
@@ -376,6 +427,37 @@ class Menu:
 
 
         return dados_finais_rpi
+    
+    def _obter_lista_de_itens(self, titulo_secao: str) -> List[Dict[str, Any]]:
+        """
+        Método auxiliar genérico para recolher uma lista de itens com peso e C.G.
+
+        Args:
+            titulo_secao (str): O título a ser exibido ao utilizador (ex: "Itens a Deduzir").
+
+        Returns:
+            List[Dict[str, Any]]: Uma lista de dicionários, onde cada dicionário
+                                  representa um item.
+        """
+        lista_itens = []
+        num_itens_str = questionary.text(
+            f"Quantos {titulo_secao} há?",
+            validate=self._validar_int_positivo # Validador para garantir que é um número > 0
+        ).ask()
+        num_itens = int(num_itens_str) if num_itens_str else 0
+
+        for i in range(num_itens):
+            print(f"\n--- Dados para o {titulo_secao} nº {i+1}/{num_itens} ---")
+            dados_item = questionary.form(
+                nome=questionary.text("Nome do Item:"),
+                peso=questionary.text("Peso [t]:", validate=self._validar_float),
+                lcg=questionary.text("Posição Longitudinal do CG (LCG) [m]:", validate=self._validar_float_qualquer),
+                vcg=questionary.text("Posição Vertical do CG (VCG) [m]:", validate=self._validar_float),
+            ).ask()
+            if not dados_item: print("Operação cancelada."); exit()
+            lista_itens.append(dados_item)
+        
+        return lista_itens
     
     def obter_caminho_salvar(
         self, tipo_resultado: str, nome_arquivo_padrao: str, nome_projeto: str
