@@ -1,14 +1,25 @@
-import numpy as np
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import Callable, Dict
+import os
+from scipy.optimize import brentq, fsolve
+from typing import List, Tuple
+from scipy.interpolate import interp1d
 import itertools
 import time
 import concurrent.futures
-from scipy.optimize import fsolve, brentq
-from scipy.interpolate import interp1d
-from typing import Callable, Tuple, List, Dict
-from src.core.ch import InterpoladorCasco
-from src.utils.integration import integrar
 from scipy.integrate import trapezoid
+
+# Para que este script temporário funcione, ele precisa de encontrar os seus
+# outros módulos. A forma mais fácil é adicionando o diretório 'src' ao
+# caminho de busca do Python.
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+# Agora podemos importar as classes dos seus outros módulos
+from src.core.ch import InterpoladorCasco, PropriedadesHidrostaticas
+from src.utils.integration import integrar
 
 class PropriedadesCruzadas:
     """
@@ -718,5 +729,327 @@ class CalculadoraCurvasCruzadas:
         df_kn_pivot = df_kn_pivot.rename(columns={'index': 'Desloc. (t)'})
         
         return df_kn_pivot
+
+def plotar_secao(
+    x_pos: float,
+    interp_be: Callable,
+    interp_bb: Callable
+):
+    """
+    Gera um gráfico de uma única secção transversal para verificação visual.
+
+    Esta função desenha o contorno do casco para boreste (BE) e bombordo (BB).
+    """
+    print(f"-> A plotar a secção em X = {x_pos:.3f} m")
     
+    # 1. Preparar os pontos para desenhar o casco
+    # Usa os limites verticais do interpolador para definir o eixo Z.
+    z_min, z_max = interp_be.x.min(), interp_be.x.max()
+    z_casco = np.linspace(z_min, z_max, 200)
     
+    # Calcula as coordenadas Y para ambos os bordos usando os interpoladores.
+    y_be_casco = interp_be(z_casco)
+    y_bb_casco = interp_bb(z_casco)
+
+    # 2. Criar o gráfico
+    plt.figure(figsize=(8, 10))
+    
+    # Desenha o casco
+    plt.plot(y_be_casco, z_casco, 'b-', label='Casco Boreste (BE)')
+    plt.plot(y_bb_casco, z_casco, 'r-', label='Casco Bombordo (BB)')
+    
+    # 3. Configurar e mostrar o gráfico
+    plt.axhline(0, color='black', linewidth=0.5)
+    plt.axvline(0, color='black', linewidth=0.5)
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.title(f"Visualização da Secção Transversal em X = {x_pos:.3f} m")
+    plt.xlabel("Meia-boca (y) [m]")
+    plt.ylabel("Altura (z) [m]")
+    plt.legend()
+    plt.axis('equal') # Garante que as escalas de Y e Z são as mesmas para uma visão real
+    plt.show()
+
+def plotar_secao_inclinada(
+    x_pos: float,
+    zc: float,
+    theta_graus: float,
+    interp_be: Callable,
+    interp_bb: Callable,
+    raizes_be: List[float],
+    raizes_bb: List[float]
+):
+    """
+    Gera um gráfico de uma única secção transversal para depuração.
+
+    Esta função desenha:
+    1. O contorno do casco para boreste (BE) e bombordo (BB).
+    2. A linha de água inclinada.
+    3. As raízes (interseções) encontradas entre o casco e a linha de água.
+    """
+    # 1. Preparar os pontos para desenhar o casco
+    z_min, z_max = interp_be.x.min(), interp_be.x.max()
+    z_casco = np.linspace(z_min, z_max, 200)
+    y_be_casco = interp_be(z_casco)
+    y_bb_casco = interp_bb(z_casco)
+
+    # 2. Preparar os pontos para desenhar a linha de água
+    tan_theta = np.tan(np.deg2rad(-theta_graus))
+    if abs(tan_theta) < 1e-9: tan_theta = 1e-9
+    y_wl = lambda z: (zc - z) / tan_theta
+    
+    # Define os limites do gráfico para a linha de água
+    y_limite_max = max(y_be_casco.max(), -y_bb_casco.min()) * 1.2
+    z_wl = np.linspace(0, z_max, 2)
+    y_wl_pontos = y_wl(z_wl)
+
+    # 3. Criar o gráfico
+    plt.figure(figsize=(8, 10))
+    
+    # Desenha o casco
+    plt.plot(y_be_casco, z_casco, 'b-', label='Casco BE',)
+    plt.plot(y_bb_casco, z_casco, 'g-', label='Casco BB',)
+
+    # Desenha a linha de água
+    plt.plot(y_wl_pontos, z_wl, 'c--', label='Linha de Água Inclinada')
+
+    # Desenha o zc
+    plt.plot(0, zc, 'kx', markersize=8, label=f'Zc={zc:.3f} m')
+
+    # 4. Desenha as raízes encontradas
+    for raiz_z in raizes_be:
+        y_raiz = interp_be(raiz_z)
+        plt.plot(y_raiz, raiz_z, 'ro', markersize=8, label=f'Raiz BE (z={raiz_z:.3f})')
+        
+    for raiz_z in raizes_bb:
+        y_raiz = interp_bb(raiz_z)
+        plt.plot(y_raiz, raiz_z, 'go', markersize=8, label=f'Raiz BB (z={raiz_z:.3f})')
+
+    # 5. Configurar e mostrar o gráfico
+    plt.axhline(0, color='black', linewidth=0.5)
+    plt.axvline(0, color='black', linewidth=0.5)
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.title(f"Depuração da Secção X={x_pos:.3f} | Zc={zc:.3f} | Ângulo={theta_graus:.1f}°")
+    plt.xlabel("Meia-boca (y) [m]")
+    plt.ylabel("Altura (z) [m]")
+    plt.legend()
+    plt.axis('equal') # Garante que as escalas de Y e Z são as mesmas
+    plt.show()
+
+
+# --- BLOCO DE TESTES FINAL PARA GERAR TABELA KN ---
+if __name__ == '__main__':
+    # Importar as ferramentas necessárias
+    from rich.console import Console
+    from rich.table import Table
+    import itertools
+    import time
+
+    print("--- INICIANDO SCRIPT DE DEPURAÇÃO E CÁLCULO DA TABELA KN ---")
+
+    # 1. Setup inicial (igual ao anterior)
+    caminho_csv = os.path.join("data", "exemplos_tabelas_cotas", "TABELA DE COTAS.csv")
+    tabela_cotas = pd.read_csv(caminho_csv)
+    tabela_cotas.columns = [col.strip().lower() for col in tabela_cotas.columns]
+    casco = InterpoladorCasco(tabela_cotas, metodo_interp='linear')
+    prop_cruzadas = PropriedadesCruzadas(casco)
+
+    # 2. Definir os parâmetros gerais do teste
+    densidade_teste = 1.025
+    boca_teste = tabela_cotas['y'].max() * 2
+    pontal_teste = tabela_cotas['z'].max()
+
+    # 3. Definir as faixas de cálculo, conforme solicitado
+    lista_deslocamentos = list(np.arange(0, 201, 20))
+    lista_angulos = list(np.arange(0, 61, 5))
+
+    print(f"\n-> A calcular {len(lista_deslocamentos)} deslocamentos e {len(lista_angulos)} ângulos...")
+
+    # 4. Gerar o interpolador de chute inicial (simulando as curvas hidrostáticas)
+    print("-> A gerar interpolador de chute inicial (Calado vs. Deslocamento)...")
+    calados_hidro = np.linspace(0.1, pontal_teste, 20) # Aumentar pontos para mais precisão
+    deslocamentos_hidro = []
+    for calado in calados_hidro:
+        props_hidro = PropriedadesHidrostaticas(casco, calado, densidade_teste)
+        deslocamentos_hidro.append(props_hidro.deslocamento)
+    
+    interp_chute_zc_teste = interp1d(
+        deslocamentos_hidro, calados_hidro,
+        bounds_error=False, fill_value="extrapolate"
+    )
+    print("-> Interpolador gerado.")
+
+    # 5. Executar o loop de cálculo principal
+    start_time = time.perf_counter()
+    resultados_kn = []
+    
+    # Cria todas as combinações de deslocamento e ângulo
+    tarefas = list(itertools.product(lista_deslocamentos, lista_angulos))
+
+    for i, (desloc, angulo) in enumerate(tarefas):
+        print(f"  Calculando ponto {i+1}/{len(tarefas)}: Desloc={desloc:.1f}t, Ângulo={angulo:.1f}°...")
+        kn = prop_cruzadas.calcular_kn_para_ponto(
+            deslocamento=desloc,
+            angulo_graus=angulo,
+            densidade_agua=densidade_teste,
+            interp_chute_zc=interp_chute_zc_teste,
+            boca_maxima=boca_teste,
+            pontal_maximo=pontal_teste
+        )
+        resultados_kn.append((desloc, angulo, kn))
+    
+    duration = time.perf_counter() - start_time
+    print(f"\n-> Cálculo de {len(tarefas)} pontos KN finalizado em {duration:.2f} segundos.")
+
+    # 6. Processar e exibir os resultados na tabela
+    if not resultados_kn:
+        print("\nAVISO: Nenhum resultado de KN foi calculado.")
+    else:
+        df_kn_flat = pd.DataFrame(resultados_kn, columns=['Deslocamento', 'Ângulo', 'KN'])
+        df_kn_pivot = df_kn_flat.pivot(index='Deslocamento', columns='Ângulo', values='KN')
+        df_kn_pivot.index.name = "Desloc. (t)"
+        df_kn_pivot = df_kn_pivot.reset_index()
+
+        # Usar a nossa função de display genérica
+        tabela_kn = Table(
+            title="--- Tabela de Curvas Cruzadas de Estabilidade (KN) [m] ---",
+            show_header=True, header_style="bold magenta"
+        )
+        for column_name in df_kn_pivot.columns:
+            header = f"{column_name:.1f}" if isinstance(column_name, float) else str(column_name)
+            tabela_kn.add_column(header, justify="right")
+
+        for _, row in df_kn_pivot.iterrows():
+            row_str = [f"{val:.4f}" if isinstance(val, (float, np.floating)) else str(val) for val in row]
+            tabela_kn.add_row(*row_str)
+
+        console = Console()
+        console.print(tabela_kn)
+
+    print("\n--- SCRIPT DE DEPURAÇÃO CONCLUÍDO ---")
+
+# # --- NOVO BLOCO DE TESTES COM TABELA DE RESUMO DO SOLVER ---
+# if __name__ == '__main__':
+#     from rich.console import Console
+#     from rich.table import Table
+
+#     print("--- INICIANDO SCRIPT DE DEPURAÇÃO COMPLETO ---")
+
+#     # 1. Setup inicial
+#     caminho_csv = os.path.join("data", "exemplos_tabelas_cotas", "TABELA DE COTAS.csv")
+#     tabela_cotas = pd.read_csv(caminho_csv)
+#     tabela_cotas.columns = [col.strip().lower() for col in tabela_cotas.columns]
+#     casco = InterpoladorCasco(tabela_cotas, metodo_interp='linear')
+#     prop_cruzadas = PropriedadesCruzadas(casco)
+
+#     # 2. Definir os parâmetros do teste
+#     deslocamento_teste = 200
+#     angulo_teste_fixo = 50.0
+#     densidade_teste = 1.025
+#     volume_desejado = deslocamento_teste / densidade_teste
+    
+#     boca_teste = tabela_cotas['y'].max() * 2
+#     pontal_teste = tabela_cotas['z'].max()
+#     zc_chute_teste = 1.5
+
+#     print(f"\n--- A EXECUTAR TESTE PARA DESLOCAMENTO = {deslocamento_teste}t E ÂNGULO = {angulo_teste_fixo}° ---")
+#     print(f"Volume desejado: {volume_desejado:.4f} m³")
+
+#     # 3. Encontrar a linha de água de equilíbrio e obter os dados de depuração
+#     (zc_final, y_cb_final, z_cb_final, 
+#      volume_achado, iteracoes) = prop_cruzadas._encontrar_zc_para_volume(
+#         volume_desejado=volume_desejado,
+#         theta_graus=angulo_teste_fixo,
+#         zc_chute_inicial=zc_chute_teste,
+#         boca_maxima=boca_teste,
+#         pontal_maximo=pontal_teste
+#     )
+
+#     # 4. Criar e imprimir a tabela de resumo do solver
+#     console = Console()
+#     tabela_solver = Table(
+#         title=f"Resumo do Solver para {deslocamento_teste}t @ {angulo_teste_fixo}°",
+#         show_header=True, header_style="bold green"
+#     )
+#     tabela_solver.add_column("Parâmetro", style="dim")
+#     tabela_solver.add_column("Valor")
+    
+#     if np.isnan(zc_final):
+#         tabela_solver.add_row("Status", "[bold red]FALHOU EM CONVERGIR[/bold red]")
+#     else:
+#         tabela_solver.add_row("Volume Desejado (m³)", f"{volume_desejado:.4f}")
+#         tabela_solver.add_row("Volume Achado (m³)", f"{volume_achado:.4f}")
+#         tabela_solver.add_row("Erro de Volume (m³)", f"{abs(volume_achado - volume_desejado):.6f}")
+#         tabela_solver.add_row("Chute Inicial Zc (m)", f"{zc_chute_teste:.4f}")
+#         tabela_solver.add_row("Zc Final (m)", f"{zc_final:.4f}")
+#         tabela_solver.add_row("Nº de Iterações", str(iteracoes))
+    
+#     console.print(tabela_solver)
+    
+#     print("\n--- SCRIPT DE DEPURAÇÃO CONCLUÍDO ---")
+
+# --- NOVO BLOCO DE TESTES PARA ANÁLISE SISTEMÁTICA ---
+if __name__ == '__main__':
+    # Importar as ferramentas para a tabela
+    from rich.console import Console
+    from rich.table import Table
+
+    print("--- INICIANDO SCRIPT DE DEPURAÇÃO SISTEMÁTICA ---")
+
+    # 1. Setup inicial (igual ao anterior)
+    caminho_csv = os.path.join("data", "exemplos_tabelas_cotas", "TABELA DE COTAS.csv")
+    tabela_cotas = pd.read_csv(caminho_csv)
+    tabela_cotas.columns = [col.strip().lower() for col in tabela_cotas.columns]
+    casco = InterpoladorCasco(tabela_cotas, metodo_interp='linear')
+    prop_cruzadas = PropriedadesCruzadas(casco)
+
+    # 2. Definir os parâmetros do teste
+    angulo_teste_fixo = 50.0  # Vamos fixar o ângulo para observar o efeito do Zc
+    calados_para_testar = [2.7535] # Lista de Zc's para iterar
+
+    print(f"\n--- A EXECUTAR ANÁLISE PARA ÂNGULO FIXO = {angulo_teste_fixo}° ---")
+
+    # 3. Loop principal: iterar sobre cada calado de teste
+    for zc in calados_para_testar:
+        
+        # Criar uma nova tabela para este calado
+        tabela_resultados = Table(
+            title=f"Resultados de Área para Zc = {zc:.3f} m @ {angulo_teste_fixo}° de Inclinação",
+            show_header=True, header_style="bold cyan"
+        )
+        tabela_resultados.add_column("Estação (X)", justify="center", style="dim")
+        tabela_resultados.add_column("Área BB (m²)", justify="right")
+        tabela_resultados.add_column("My BB (m³)", justify="right")
+        tabela_resultados.add_column("Mz BB (m³)", justify="right")
+        tabela_resultados.add_column("Área BE (m²)", justify="right")
+        tabela_resultados.add_column("My BE (m³)", justify="right")
+        tabela_resultados.add_column("Mz BE (m³)", justify="right")
+        tabela_resultados.add_column("Área Total (m²)", justify="right", style="bold")
+
+        # 4. Loop secundário: iterar sobre cada secção do navio
+        for x_pos in casco.posicoes_balizas:
+            interp_be_teste = casco.funcoes_baliza.get(x_pos)
+            if not interp_be_teste:
+                continue # Pula as secções que não têm interpolador
+            
+            # Chamar a nossa função de cálculo principal para a secção
+            (area_total, _, _, area_bb, area_be, my_bb, my_be, mz_bb, mz_be) = prop_cruzadas._calcular_propriedades_secao_inclinada(
+                x_pos, zc, angulo_teste_fixo
+            )
+
+            # Adicionar os resultados à tabela
+            tabela_resultados.add_row(
+                f"{x_pos:.3f}",
+                f"{area_bb:.4f}",
+                f"{my_bb:.4f}",
+                f"{mz_bb:.4f}",
+                f"{area_be:.4f}",
+                f"{my_be:.4f}",
+                f"{mz_be:.4f}",
+                f"{area_total:.4f}"
+            )
+            
+        # 5. Imprimir a tabela completa para o calado atual
+        console = Console()
+        console.print(tabela_resultados)
+
+    print("\n--- SCRIPT DE DEPURAÇÃO CONCLUÍDO ---")

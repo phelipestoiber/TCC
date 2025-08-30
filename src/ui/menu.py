@@ -237,7 +237,7 @@ class Menu:
                 passo = float(questionary.text("Passo entre os ângulos:", validate=lambda val: self._validar_float(val) and float(val) <= (angulo_max - angulo_min)).ask())
                 dados_angulo = {"metodo": "passo", "min": angulo_min, "max": angulo_max, "passo": passo}
             
-        dados_finais = {"deslocamentos": dados_deslocamento, "angulos": dados_angulo, "caminho_salvar_kn": None}
+        dados_finais = {"deslocamentos": dados_deslocamento, "angulos": dados_angulo}
             
         return dados_finais
     
