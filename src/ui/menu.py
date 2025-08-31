@@ -313,11 +313,12 @@ class Menu:
         # Condicional para leitura de calados
         if "calados" in metodo_flutuacao:
             print("\nPor favor, insira os calados lidos.")
+            print("\nNOTA: Assume-se LR e LM positivos a vante das perpendiculares e LV positivo a ré.")
             calados_lidos = questionary.form(
                 # Posições longitudinais das marcas de calado
-                lr=questionary.text("Posição longitudinal da marca de Ré (LR) [m]:", validate=self._validar_float_qualquer),
-                lm=questionary.text("Posição longitudinal da marca de Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer),
-                lv=questionary.text("Posição longitudinal da marca de Vante (LV) [m]:", validate=self._validar_float_qualquer),
+                lr=questionary.text("Distância da marca de calado de ré à perpendicular de ré (LR) [m]:", validate=self._validar_float_qualquer),
+                lm=questionary.text("Distância da marca de calado de Meio-Navio à perpendicular de Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer),
+                lv=questionary.text("Distância da marca de calado de vante à perpendicular de vante (LV) [m]:", validate=self._validar_float_qualquer),
                 # Leituras dos calados
                 bb_re=questionary.text("Calado a bombordo, a Ré [m]:", validate=self._validar_float_positivo),
                 bb_meio=questionary.text("Calado a bombordo, a Meio-Navio [m]:", validate=self._validar_float_positivo),
