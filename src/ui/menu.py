@@ -314,6 +314,11 @@ class Menu:
         if "calados" in metodo_flutuacao:
             print("\nPor favor, insira os calados lidos.")
             calados_lidos = questionary.form(
+                # Posições longitudinais das marcas de calado
+                lr=questionary.text("Posição longitudinal da marca de Ré (LR) [m]:", validate=self._validar_float_qualquer),
+                lm=questionary.text("Posição longitudinal da marca de Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer),
+                lv=questionary.text("Posição longitudinal da marca de Vante (LV) [m]:", validate=self._validar_float_qualquer),
+                # Leituras dos calados
                 bb_re=questionary.text("Calado a bombordo, a Ré [m]:", validate=self._validar_float_positivo),
                 bb_meio=questionary.text("Calado a bombordo, a Meio-Navio [m]:", validate=self._validar_float_positivo),
                 bb_vante=questionary.text("Calado a bombordo, a Vante [m]:", validate=self._validar_float_positivo),
@@ -329,9 +334,9 @@ class Menu:
             print("\nPor favor, insira as informações sobre a medição das bordas livres.")
             dados_bordas_livres = questionary.form(
                 # Posições longitudinais das marcas de calado
-                lr=questionary.text("Posição longitudinal da marca de Ré (LR) [m]:", validate=self._validar_float_qualquer),
-                lm=questionary.text("Posição longitudinal da marca de Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer),
-                lv=questionary.text("Posição longitudinal da marca de Vante (LV) [m]:", validate=self._validar_float_qualquer),
+                lr=questionary.text("Posição longitudinal no local da medição a Ré (LR) [m]:", validate=self._validar_float_qualquer),
+                lm=questionary.text("Posição longitudinal no local da medição a Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer),
+                lv=questionary.text("Posição longitudinal no local da medição a Vante (LV) [m]:", validate=self._validar_float_qualquer),
                 # Pontais nos locais de medição
                 pontal_re=questionary.text("Pontal moldado no local da medição a Ré [m]:", validate=self._validar_float_positivo),
                 pontal_meio=questionary.text("Pontal moldado no local da medição a Meio-Navio [m]:", validate=self._validar_float_positivo),
