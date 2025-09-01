@@ -158,8 +158,8 @@ class Menu:
         else: # Opções de min/max
             # Utiliza um form para pegar min e max juntos, o que é mais robusto
             calados_min_max = questionary.form(
-                calado_min=questionary.text("Calado mínimo:", validate=lambda val: self._validar_float_positivo(val) and float(val) < float(dados_embarcacao['pontal'])),
-                calado_max=questionary.text("Calado máximo:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= float(dados_embarcacao['pontal']))
+                calado_min=questionary.text("Calado mínimo:", validate=lambda val: self._validar_float_positivo(val) and float(val) < float(dados_embarcacao['pontal']), default="0"),
+                calado_max=questionary.text("Calado máximo:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= float(dados_embarcacao['pontal']), default="3")
             ).ask()
 
             if not calados_min_max:
@@ -215,8 +215,8 @@ class Menu:
         else: # Opções de min/max
             # Utiliza um form para pegar min e max juntos, o que é mais robusto
             deslocamentos_min_max = questionary.form(
-                deslocamento_min=questionary.text("Deslocamento mínimo:", validate=lambda val: self._validar_float_positivo(val)),
-                deslocamento_max=questionary.text("Deslocamento máximo:", validate=lambda val: self._validar_float_positivo(val))
+                deslocamento_min=questionary.text("Deslocamento mínimo:", validate=lambda val: self._validar_float_positivo(val), default="0"),
+                deslocamento_max=questionary.text("Deslocamento máximo:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= float(max_desloc), default=f"{max_desloc:.4f}")
             ).ask()
 
             if not deslocamentos_min_max:
@@ -254,8 +254,8 @@ class Menu:
         else: # Opções de min/max
             # Utiliza um form para pegar min e max juntos, o que é mais robusto
             angulos_min_max = questionary.form(
-                angulo_min=questionary.text("Ângulo mínimo:", validate=lambda val: self._validar_float_positivo(val)),
-                angulo_max=questionary.text("Ângulo máximo:", validate=lambda val: self._validar_float_positivo(val))
+                angulo_min=questionary.text("Ângulo mínimo:", validate=lambda val: self._validar_float_positivo(val), default="0"),
+                angulo_max=questionary.text("Ângulo máximo:", validate=lambda val: self._validar_float_positivo(val) and float(val) <= float("90"), default="60")
             ).ask()
 
             if not angulos_min_max:
@@ -335,20 +335,20 @@ class Menu:
             print("\nPor favor, insira as informações sobre a medição das bordas livres.")
             dados_bordas_livres = questionary.form(
                 # Posições longitudinais das marcas de calado
-                lr=questionary.text("Posição longitudinal no local da medição a Ré (LR) [m]:", validate=self._validar_float_qualquer),
-                lm=questionary.text("Posição longitudinal no local da medição a Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer),
-                lv=questionary.text("Posição longitudinal no local da medição a Vante (LV) [m]:", validate=self._validar_float_qualquer),
+                lr=questionary.text("Posição longitudinal no local da medição a Ré (LR) [m]:", validate=self._validar_float_qualquer, default="13.039"),
+                lm=questionary.text("Posição longitudinal no local da medição a Meio-Navio (LM) [m]:", validate=self._validar_float_qualquer, default="3.815"),
+                lv=questionary.text("Posição longitudinal no local da medição a Vante (LV) [m]:", validate=self._validar_float_qualquer, default="16.433"),
                 # Pontais nos locais de medição
-                pontal_re=questionary.text("Pontal moldado no local da medição a Ré [m]:", validate=self._validar_float_positivo),
-                pontal_meio=questionary.text("Pontal moldado no local da medição a Meio-Navio [m]:", validate=self._validar_float_positivo),
-                pontal_vante=questionary.text("Pontal moldado no local da medição a Vante [m]:", validate=self._validar_float_positivo),
+                pontal_re=questionary.text("Pontal moldado no local da medição a Ré [m]:", validate=self._validar_float_positivo, default="3.125"),
+                pontal_meio=questionary.text("Pontal moldado no local da medição a Meio-Navio [m]:", validate=self._validar_float_positivo, default="3"),
+                pontal_vante=questionary.text("Pontal moldado no local da medição a Vante [m]:", validate=self._validar_float_positivo, default="3.079"),
                 # Leituras das bordas livres
-                bl_bb_re=questionary.text("Borda Livre a Bombordo, a Ré [m]:", validate=self._validar_float_positivo),
-                bl_be_re=questionary.text("Borda Livre a Boreste, a Ré [m]:", validate=self._validar_float_positivo),
-                bl_bb_meio=questionary.text("Borda Livre a Bombordo, a Meio-Navio [m]:", validate=self._validar_float_positivo),
-                bl_be_meio=questionary.text("Borda Livre a Boreste, a Meio-Navio [m]:", validate=self._validar_float_positivo),
-                bl_bb_vante=questionary.text("Borda Livre a Bombordo, a Vante [m]:", validate=self._validar_float_positivo),
-                bl_be_vante=questionary.text("Borda Livre a Boreste, a Vante [m]:", validate=self._validar_float_positivo),
+                bl_bb_re=questionary.text("Borda Livre a Bombordo, a Ré [m]:", validate=self._validar_float_positivo, default="1.918"),
+                bl_be_re=questionary.text("Borda Livre a Boreste, a Ré [m]:", validate=self._validar_float_positivo, default="1.918"),
+                bl_bb_meio=questionary.text("Borda Livre a Bombordo, a Meio-Navio [m]:", validate=self._validar_float_positivo, default="1.934"),
+                bl_be_meio=questionary.text("Borda Livre a Boreste, a Meio-Navio [m]:", validate=self._validar_float_positivo, default="1.934"),
+                bl_bb_vante=questionary.text("Borda Livre a Bombordo, a Vante [m]:", validate=self._validar_float_positivo, default="2.221"),
+                bl_be_vante=questionary.text("Borda Livre a Boreste, a Vante [m]:", validate=self._validar_float_positivo, default="2.221"),
             ).ask()
             if not dados_bordas_livres: print("Operação cancelada."); exit()
             dados_flutuacao.update(dados_bordas_livres)
@@ -356,9 +356,9 @@ class Menu:
         # Densidades medidas no local
         print("\nPor favor, insira as densidades da água [t/m³] medidas no local.")
         densidades_medidas = questionary.form(
-            re=questionary.text("Densidade a Ré:", validate=self._validar_float_positivo),
-            meio=questionary.text("Densidade a Meio-Navio:", validate=self._validar_float_positivo),
-            vante=questionary.text("Densidade a Vante:", validate=self._validar_float_positivo),
+            re=questionary.text("Densidade a Ré:", validate=self._validar_float_positivo, default="1"),
+            meio=questionary.text("Densidade a Meio-Navio:", validate=self._validar_float_positivo, default="1"),
+            vante=questionary.text("Densidade a Vante:", validate=self._validar_float_positivo, default="1"),
         ).ask()
         if not densidades_medidas: print("Operação cancelada."); exit()
 
@@ -389,9 +389,9 @@ class Menu:
         #  1. Pessoas a bordo (sempre)
         print("\n--- Itens a Deduzir (Automático) ---")
         dados_pessoas = questionary.form(
-            peso=questionary.text("Peso total das pessoas a bordo [t]:", validate=self._validar_float_positivo),
-            lcg=questionary.text("LCG médio das pessoas [m]:", validate=self._validar_float_qualquer),
-            vcg=questionary.text("VCG médio das pessoas [m]:", validate=self._validar_float_positivo),
+            peso=questionary.text("Peso total das pessoas a bordo [t]:", validate=self._validar_float_positivo, default="0.4"),
+            lcg=questionary.text("LCG médio das pessoas [m]:", validate=self._validar_float_qualquer, default="24.745"),
+            vcg=questionary.text("VCG médio das pessoas [m]:", validate=self._validar_float_positivo, default="4"),
         ).ask()
         if not dados_pessoas: print("Operação cancelada."); exit()
 
@@ -403,7 +403,7 @@ class Menu:
             for i in range(4):
                 print(f"--- Dados para o Peso da Prova nº {i+1}/4 ---")
                 dados_peso_individual = questionary.form(
-                    peso=questionary.text("Peso [t]:", validate=self._validar_float_positivo),
+                    peso=questionary.text("Peso [t]:", validate=self._validar_float_positivo, default="1"),
                     lcg=questionary.text("Posição Longitudinal (LCG) [m]:", validate=self._validar_float_qualquer),
                     vcg=questionary.text("Posição Vertical (VCG) [m]:", validate=self._validar_float_positivo),
                     tcg=questionary.text("Posição Transversal (TCG) [m]:", validate=self._validar_float_qualquer),
@@ -501,10 +501,10 @@ class Menu:
                 for mov in range(9): # Movimento 0 (inicial) + 8 movimentos
                     print(f"  --- Leituras para o Movimento nº {mov} ---")
                     leituras = questionary.form(
-                        maximos_bb=questionary.text("5 leituras MÁXIMAS em Bombordo (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
-                        minimos_bb=questionary.text("5 leituras MÍNIMAS em Bombordo (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
-                        maximos_be=questionary.text("5 leituras MÁXIMAS em Boreste (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
-                        minimos_be=questionary.text("5 leituras MÍNIMAS em Boreste (separadas por ';'):", validate=self._validar_lista_com_5_numeros),
+                        maximos_bb=questionary.text("5 leituras MÁXIMAS em Bombordo (separadas por ';'):", validate=self._validar_lista_com_5_numeros, default="1;1;1;1;1"),
+                        minimos_bb=questionary.text("5 leituras MÍNIMAS em Bombordo (separadas por ';'):", validate=self._validar_lista_com_5_numeros, default="1;1;1;1;1"),
+                        maximos_be=questionary.text("5 leituras MÁXIMAS em Boreste (separadas por ';'):", validate=self._validar_lista_com_5_numeros, default="1;1;1;1;1"),
+                        minimos_be=questionary.text("5 leituras MÍNIMAS em Boreste (separadas por ';'):", validate=self._validar_lista_com_5_numeros, default="1;1;1;1;1"),
                     ).ask()
                     if not leituras: print("Operação cancelada."); exit()
                     leituras_movimentos.append(leituras)

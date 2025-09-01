@@ -2,6 +2,7 @@ from .ui.menu import Menu
 from .io.file_handler import FileHandler
 from .core.ch import InterpoladorCasco, CalculadoraHidrostatica
 from .core.cc import CalculadoraCurvasCruzadas
+from .core.rpi import CalculadoraRPI
 from .utils.list_utils import gerar_lista_de_calados, gerar_lista_deslocamentos, gerar_lista_angulos
 from .ui.display import exibir_tabela_hidrostatica
 
@@ -129,15 +130,46 @@ def main():
     # 15. Obter dados para o RPI
     dados_rpi = menu.obter_dados_rpi()
 
-    print("\n--- DADOS RECOLHIDOS PARA O RPI ---")
-    import json
-    print(json.dumps(dados_rpi, indent=4))
-    print("-----------------------------------")
-    
-    print("\nMódulo RPI em construção... O programa será finalizado.")
+    try:
+        # 1. Instanciar e executar os cálculos do RPI
+        calculadora_rpi = CalculadoraRPI(dados_rpi, dados_hidrostaticos)
+        calculadora_rpi.calcular_condicao_flutuacao()
+        calculadora_rpi.calcular_densidade_media()
+        calculadora_rpi.calcular_pesos_e_momentos()
+        calculadora_rpi.processar_leituras_inclinacao()
+        calculadora_rpi.calcular_momentos_inclinantes()
+
+        # 2. Exibir os resultados para verificação
+        print("\n--- Resultados Preliminares do RPI ---")
+        print(f"  Densidade Média: {calculadora_rpi.densidade_media:.4f} t/m³")
+        
+        print("\n  Resumo dos Itens a DEDUZIR:")
+        # O método .to_string() do pandas formata o DataFrame para uma boa visualização no terminal
+        print(calculadora_rpi.tabela_deducoes.to_string(index=False))
+        print("-" * 50)
+        print(f"  TOTAIS A DEDUZIR: Peso={calculadora_rpi.total_deducoes['peso']:.3f} t, "
+              f"Mom. Long={calculadora_rpi.total_deducoes['momento_long']:.3f} t.m, "
+              f"Mom. Vert={calculadora_rpi.total_deducoes['momento_vert']:.3f} t.m")
+        
+        print("\n  Resumo dos Itens a ACRESCENTAR:")
+        print(calculadora_rpi.tabela_acrescimos.to_string(index=False))
+        print("-" * 50)
+        print(f"  TOTAIS A ACRESCENTAR: Peso={calculadora_rpi.total_acrescimos['peso']:.3f} t, "
+              f"Mom. Long={calculadora_rpi.total_acrescimos['momento_long']:.3f} t.m, "
+              f"Mom. Vert={calculadora_rpi.total_acrescimos['momento_vert']:.3f} t.m")
+        
+        print("\n  Resumo das Leituras Processadas:")
+        import json
+        print(json.dumps(calculadora_rpi.leituras_processadas, indent=4))
+
+        print("\n  Momentos Inclinantes Calculados para cada Movimento:")
+        for i, momento in enumerate(calculadora_rpi.momentos_inclinantes):
+            print(f"    - Movimento {i}: {momento:.4f} t.m")
+
+    except Exception as e:
+        print(f"\nOcorreu um erro durante o cálculo do RPI: {e}")
     
     print("\nPrograma finalizado.")
-
     
 
 if __name__ == '__main__':
