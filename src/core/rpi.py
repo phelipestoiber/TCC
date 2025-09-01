@@ -39,6 +39,13 @@ class CalculadoraRPI:
         # Listas para armazenar os momentos calculados
         self.momentos_inclinantes: List[float] = []
 
+        # Características da embarcação
+        self.calado_medio: float = 0.0
+        self.deflexao: float = 0.0
+        self.trim: float = 0.0
+        self.calado_corrigido: float = 0.0
+        self.hidrostaticos_prova: Dict[str, float] = {}
+
     def calcular_condicao_flutuacao(self):
         """
         Calcula a condição de flutuação da embarcação (calados nas perpendiculares)
@@ -305,3 +312,41 @@ class CalculadoraRPI:
             
         self.momentos_inclinantes = momentos_calculados
         print("-> Cálculo de momentos inclinantes concluído.")
+
+    def calcular_caracteristicas_hidrostaticas_prova(self):
+        """
+        Calcula o calado médio, deflexão e trim da embarcação na condição da prova.
+
+        Utiliza os calados nas marcas e nas perpendiculares calculados anteriormente.
+        """
+        print("\n-> A calcular características hidrostáticas da prova...")
+        
+        # Certificar que o cálculo prévio foi executado
+        if not self.calados_nas_perpendiculares or not self.calados_nas_marcas:
+            print("ERRO: É necessário primeiro calcular a condição de flutuação.")
+            return
+
+        HPR = self.calados_nas_perpendiculares["re"]
+        HPV = self.calados_nas_perpendiculares["vante"]
+        HMN = self.calados_nas_perpendiculares["meio"]
+        
+        HMR = self.calados_nas_marcas["re"]
+        HMV = self.calados_nas_marcas["vante"]
+
+        # 1. Calcular o Calado Médio (TM)
+        self.calado_medio = (HPR + HPV) / 2
+        print(f"   Calado Médio (nas PP) calculado: {self.calado_medio:.4f} m")
+
+        # 2. Calcular a Deflexão (Hogging/Sagging)
+        self.deflexao = HMN - self.calado_medio
+        deflexao_tipo = "Hogging (Alquebramento)" if self.deflexao < 0 else "Sagging (Contra-alquebramento)"
+        print(f"   Deflexão calculada: {abs(self.deflexao):.4f} m ({deflexao_tipo})")
+
+        # 3. Calcular o Trim (t)
+        self.trim = HMR - HMV
+        trim_direcao = "Trim pela Popa" if self.trim > 0 else "Trim pela Proa" if self.trim < 0 else "Sem Trim"
+        print(f"   Trim (nas marcas) calculado: {abs(self.trim):.4f} m ({trim_direcao})")
+
+        #4. Calcula o Calado Corrigido para Deflexão
+        self.calado_corrigido = (HMR + 6*HMN + HPV) / 8
+        print(f"   Calado Corrigido para Deflexão: {self.calado_corrigido:.4f} m")
