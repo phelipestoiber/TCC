@@ -2,12 +2,18 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Tuple
 import copy
+import os
+
+import sys
+# Adicionar o diretório 'src' ao caminho para encontrar outros módulos
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from src.core.ch import InterpoladorCasco, PropriedadesHidrostaticas 
 
 class CalculadoraRPI:
     """
     Encapsula todos os cálculos relacionados com o Relatório da Prova de Inclinação.
     """
-    def __init__(self, dados_rpi: Dict[str, Any], dados_hidrostaticos: Dict[str, Any]):
+    def __init__(self, dados_rpi: Dict[str, Any], dados_hidrostaticos: Dict[str, Any], df_hidrostatico: pd.DataFrame, casco_interpolado: InterpoladorCasco):
         """
         Inicializa a calculadora do RPI.
 
@@ -19,6 +25,8 @@ class CalculadoraRPI:
         """
         self.dados_rpi = dados_rpi
         self.dados_hidrostaticos = dados_hidrostaticos
+        self.df_hidrostatico = df_hidrostatico
+        self.casco = casco_interpolado
         
         # Resultados que serão calculados
         self.calados_nas_marcas: Dict[str, float] = {}
@@ -44,6 +52,7 @@ class CalculadoraRPI:
         self.deflexao: float = 0.0
         self.trim: float = 0.0
         self.calado_corrigido: float = 0.0
+
         self.hidrostaticos_prova: Dict[str, float] = {}
 
     def calcular_condicao_flutuacao(self):
@@ -347,6 +356,147 @@ class CalculadoraRPI:
         trim_direcao = "Trim pela Popa" if self.trim > 0 else "Trim pela Proa" if self.trim < 0 else "Sem Trim"
         print(f"   Trim (nas marcas) calculado: {abs(self.trim):.4f} m ({trim_direcao})")
 
-        #4. Calcula o Calado Corrigido para Deflexão
-        self.calado_corrigido = (HMR + 6*HMN + HPV) / 8
-        print(f"   Calado Corrigido para Deflexão: {self.calado_corrigido:.4f} m")
+        # 4. Calado corrigido para deflexão
+        self.calado_corrigido = (HMR + 6 * HMN + HPV) / 8
+        print(f"   Calado Corrigido para Deflexão calculado: {self.calado_corrigido:.4f} m")
+
+
+
+    def aplicar_correcao_deflexao(self) -> InterpoladorCasco:
+        """
+        Aplica a correção de deflexão (hogging/sagging) à geometria do casco.
+
+        Este método utiliza a deflexão máxima calculada a meio-navio e a modela
+        como uma curva parabólica ao longo do comprimento da embarcação. A correção
+        vertical correspondente é então aplicada a cada ponto da tabela de cotas
+        original, gerando um novo objeto InterpoladorCasco que representa a
+        geometria deformada da embarcação.
+
+        Returns:
+            InterpoladorCasco: Um novo objeto com a geometria do casco corrigida
+                               para a deflexão.
+        """
+        print("\n-> A aplicar correção de deflexão à tabela de cotas...")
+        
+        if self.deflexao is None or self.casco is None:
+            print("ERRO: A deflexão e a geometria do casco devem ser calculadas primeiro.")
+            return None
+
+        deflexao_maxima = self.deflexao
+        lpp = float(self.dados_hidrostaticos['lpp'])
+        
+        # Copia a tabela de cotas original para não modificar os dados base
+        tabela_corrigida = self.casco.tabela_cotas.copy()
+        
+        # 1. Função da parábola de deflexão
+        # d(x) = 4 * deflexao_maxima * (Lpp*x - x^2) / Lpp^2
+        def calcular_delta_z(x):
+            if lpp == 0: return 0
+            return (4 * deflexao_maxima * (lpp * x - x**2)) / (lpp**2)
+
+        # 2. Aplicar a correção a todos os pontos 'z' da tabela
+        # A função .apply do pandas é eficiente para esta operação
+        tabela_corrigida['z'] = tabela_corrigida.apply(
+            lambda row: row['z'] + calcular_delta_z(row['x']),
+            axis=1
+        )
+        
+        print("   Correção de deflexão aplicada com sucesso.")
+        
+        # Cria e retorna um novo interpolador com a geometria corrigida
+        casco_corrigido = InterpoladorCasco(
+            tabela_corrigida,
+            metodo_interp=self.casco.metodo_interp
+        )
+        return casco_corrigido
+
+    def calcular_hidrostaticos_corrigidos(self, casco_corrigido: InterpoladorCasco):
+        """
+        Calcula as propriedades hidrostáticas finais para a condição da prova.
+
+        Este método utiliza a geometria do casco já corrigida para a deflexão e o
+        calado médio corrigido para instanciar a classe PropriedadesHidrostaticas,
+        reutilizando o motor de cálculo principal para obter todos os parâmetros
+        necessários (Deslocamento, VCB, KMt, etc.) de forma consistente.
+
+        Args:
+            casco_corrigido (InterpoladorCasco): O objeto de casco com a geometria
+                                                 já ajustada para a deflexão.
+        """
+        print("\n-> A calcular hidrostáticos finais com a geometria e o calado corrigidos...")
+        
+        if self.calado_corrigido <= 0:
+            print("   AVISO: Calado corrigido é zero ou negativo. Os valores hidrostáticos serão zero.")
+            self.hidrostaticos_prova = {}
+            return
+
+        # 1. Reutilizar a nossa classe de cálculo principal com os dados corrigidos
+        props = PropriedadesHidrostaticas(
+            interpolador_casco=casco_corrigido,
+            calado=self.calado_corrigido,
+            densidade=self.densidade_media
+        )
+        
+        # 2. Extrair e armazenar todos os resultados necessários
+        self.hidrostaticos_prova = {
+            "Deslocamento": props.deslocamento,
+            "Volume": props.volume,
+            "LCB": props.lcb,
+            "VCB": props.vcb,
+            "KMt": props.kmt, # <-- KMt calculado
+            "MTc": props.mtc  # <-- MTc calculado
+        }
+
+        print("   Propriedades na condição da prova obtidas com sucesso:")
+        for chave, valor in self.hidrostaticos_prova.items():
+            print(f"     - {chave}: {valor:.4f}")
+
+
+if __name__ == '__main__':
+    import os
+    import sys
+    # Adicionar o diretório 'src' ao caminho para encontrar outros módulos
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from src.core.ch import InterpoladorCasco
+
+    print("--- INICIANDO TESTE DE CORREÇÃO DE DEFLEXÃO ---")
+
+    # 1. Preparar dados de teste (simulando a execução do programa)
+    # Carregar a geometria original
+    diretorio_raiz_projeto = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    caminho_csv = os.path.join(diretorio_raiz_projeto, "data", "exemplos_tabelas_cotas", "TABELA DE COTAS.csv")
+    tabela_cotas_original = pd.read_csv(caminho_csv)
+    tabela_cotas_original.columns = [col.strip().lower() for col in tabela_cotas_original.columns]
+    
+    casco_original = InterpoladorCasco(tabela_cotas_original, metodo_interp='linear')
+
+    # Simular dados de entrada que seriam recolhidos pelo menu
+    dados_hidro_teste = {'lpp': 19.713} # Lpp da embarcação de exemplo
+
+    # Simular dados de entrada do RPI que seriam recolhidos pelo menu
+    # Usamos calados lidos para simular um trim pela popa e um sagging
+    dados_rpi_teste = {
+        'dados_flutuacao': {
+            'metodo': 'Leitura direta dos calados', 'lr': 0, 'lm': 1, 'lv': 0,
+            'bb_re': '1.875', 'bb_meio': '1.835', 'bb_vante': '1.775', 'be_re': '1.875', 'be_meio': '1.835', 'be_vante': '1.775'
+        },
+        'densidades_medidas': {'re': '1.025', 'meio': '1.025', 'vante': '1.025'}
+    }
+    
+    # Criar uma instância da calculadora
+    # Passamos um DataFrame vazio para df_hidrostatico, pois não é usado neste fluxo
+    calculadora = CalculadoraRPI(dados_rpi_teste, dados_hidro_teste, pd.DataFrame(), casco_original)
+    
+    # 2. Executar os cálculos em sequência
+    calculadora.calcular_condicao_flutuacao()
+    calculadora.calcular_caracteristicas_hidrostaticas_prova()
+    
+    # Corrigir a deflexão para obter a nova geometria
+    casco_corrigido = calculadora.aplicar_correcao_deflexao()
+
+    # Calcular os hidrostáticos finais usando o casco corrigido
+    calculadora.calcular_densidade_media()
+    calculadora.calcular_hidrostaticos_corrigidos(casco_corrigido)
+
+    # 3. Verificar os resultados (já são impressos dentro do método)
+    print("\n--- TESTE CONCLUÍDO ---")
