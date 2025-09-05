@@ -7,7 +7,8 @@ import os
 import sys
 # Adicionar o diretório 'src' ao caminho para encontrar outros módulos
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from src.core.ch import InterpoladorCasco, PropriedadesHidrostaticas 
+from src.core.ch import InterpoladorCasco, PropriedadesHidrostaticas
+from src.core.teste import *
 
 class CalculadoraRPI:
     """
@@ -51,7 +52,6 @@ class CalculadoraRPI:
         self.calado_medio: float = 0.0
         self.deflexao: float = 0.0
         self.trim: float = 0.0
-        self.calado_corrigido: float = 0.0
 
         self.hidrostaticos_prova: Dict[str, float] = {}
 
@@ -76,7 +76,7 @@ class CalculadoraRPI:
 
             # Calado = Pontal no local - Borda Livre média
             HMR = float(dados_flutuacao['pontal_re']) - bl_re
-            HMM = float(dados_flutuacao['pontal_meio']) - bl_meio
+            HMMN = float(dados_flutuacao['pontal_meio']) - bl_meio
             HMV = float(dados_flutuacao['pontal_vante']) - bl_vante
         
         else: # "Leitura direta dos calados"
@@ -87,7 +87,7 @@ class CalculadoraRPI:
             HMV = (float(dados_flutuacao['bb_vante']) + float(dados_flutuacao['be_vante'])) / 2
         
         self.calados_nas_marcas = {"re": HMR, "meio": HMM, "vante": HMV}
-        print(f"Calados médios nas marcas: Ré={HMR:.4f}m, Meio={HMM:.4f}m, Vante={HMV:.4f}m")
+        print(f"Calados médios nas marcas: Ré={HMR:.4f}m, Meio={HMMN:.4f}m, Vante={HMV:.4f}m")
 
         # --- Parte 2: Corrigir os calados para as perpendiculares ---
         print("-> A corrigir calados para as perpendiculares...")
@@ -356,10 +356,6 @@ class CalculadoraRPI:
         trim_direcao = "Trim pela Popa" if self.trim > 0 else "Trim pela Proa" if self.trim < 0 else "Sem Trim"
         print(f"   Trim (nas marcas) calculado: {abs(self.trim):.4f} m ({trim_direcao})")
 
-        # 4. Calado corrigido para deflexão
-        self.calado_corrigido = (HMR + 6 * HMN + HPV) / 8
-        print(f"   Calado Corrigido para Deflexão calculado: {self.calado_corrigido:.4f} m")
-
 
 
     def aplicar_correcao_deflexao(self) -> InterpoladorCasco:
@@ -410,41 +406,61 @@ class CalculadoraRPI:
         )
         return casco_corrigido
 
-    def calcular_hidrostaticos_corrigidos(self, casco_corrigido: InterpoladorCasco):
+    def calcular_hidrostaticos_corrigidos(self):
         """
-        Calcula as propriedades hidrostáticas finais para a condição da prova.
+        Calcula as propriedades hidrostáticas corrigidas para trim e deflexão.
 
-        Este método utiliza a geometria do casco já corrigida para a deflexão e o
-        calado médio corrigido para instanciar a classe PropriedadesHidrostaticas,
-        reutilizando o motor de cálculo principal para obter todos os parâmetros
-        necessários (Deslocamento, VCB, KMt, etc.) de forma consistente.
-
-        Args:
-            casco_corrigido (InterpoladorCasco): O objeto de casco com a geometria
-                                                 já ajustada para a deflexão.
+        Este método orquestra a utilização das classes do módulo 'ch' para
+        aplicar as correções e obter as propriedades finais da embarcação
+        na condição "como inclinado".
         """
-        print("\n-> A calcular hidrostáticos finais com a geometria e o calado corrigidos...")
+        print("\n-> Calculando propriedades hidrostáticas corrigidas para trim e deflexão...")
+
+        # 1. Aplicar a correção de deflexão (Hogging/Sagging)
+        #    Instanciamos PropriedadesDeflexao e passamos para um novo InterpoladorCasco.
+        #    O próprio InterpoladorCasco irá gerar a geometria corrigida.
+        prop_deflexao = PropriedadesDeflexao(
+            deflexao=self.deflexao,
+            tabela_cotas=self.casco.tabela_cotas,  # Usa a tabela de cotas original
+            lpp=self.dados_hidrostaticos['lpp']
+        )
         
-        if self.calado_corrigido <= 0:
-            print("   AVISO: Calado corrigido é zero ou negativo. Os valores hidrostáticos serão zero.")
-            self.hidrostaticos_prova = {}
-            return
+        casco_corrigido = InterpoladorCasco(
+            tabela_cotas=self.casco.tabela_cotas, # Tabela original como base
+            metodo_interp=self.casco.metodo_interp,
+            prop_deflexao=prop_deflexao # O objeto de deflexão aplica a correção
+        )
+        print(f"   - Geometria do casco corrigida para deflexão de {self.deflexao*1000:.1f} mm.")
 
-        # 1. Reutilizar a nossa classe de cálculo principal com os dados corrigidos
-        props = PropriedadesHidrostaticas(
+        # 2. Preparar os dados de trim
+        #    Usamos os calados corrigidos (já calculados em um passo anterior)
+        #    para instanciar a classe PropriedadesTrim.
+        prop_trim = PropriedadesTrim(
+            calado_re=self.calados_nas_perpendiculares['re'],
+            calado_vante=self.calados_nas_perpendiculares['vante'],
+            lpp=self.dados_hidrostaticos['lpp'],
+            posicoes_balizas=casco_corrigido.posicoes_balizas
+        )
+        print(f"   - Condição de trim aplicada: Tr={prop_trim.calado_re:.3f}m, Tv={prop_trim.calado_vante:.3f}m.")
+
+        # 3. Calcular as propriedades hidrostáticas finais
+        #    Instanciamos a calculadora principal, passando o casco corrigido
+        #    e as propriedades de trim.
+        self.propriedades_hidrostaticas_corrigidas = PropriedadesHidrostaticas(
             interpolador_casco=casco_corrigido,
-            calado=self.calado_corrigido,
-            densidade=self.densidade_media
+            densidade=self.densidade_media,
+            prop_trim=prop_trim
         )
         
         # 2. Extrair e armazenar todos os resultados necessários
+        props = self.propriedades_hidrostaticas_corrigidas
         self.hidrostaticos_prova = {
             "Deslocamento": props.deslocamento,
             "Volume": props.volume,
             "LCB": props.lcb,
             "VCB": props.vcb,
-            "KMt": props.kmt, # <-- KMt calculado
-            "MTc": props.mtc  # <-- MTc calculado
+            "KMt": props.kmt,
+            "MTc": props.mtc
         }
 
         print("   Propriedades na condição da prova obtidas com sucesso:")
@@ -457,7 +473,7 @@ if __name__ == '__main__':
     import sys
     # Adicionar o diretório 'src' ao caminho para encontrar outros módulos
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    from src.core.ch import InterpoladorCasco
+    from src.core.teste import InterpoladorCasco
 
     print("--- INICIANDO TESTE DE CORREÇÃO DE DEFLEXÃO ---")
 
@@ -477,7 +493,7 @@ if __name__ == '__main__':
     # Usamos calados lidos para simular um trim pela popa e um sagging
     dados_rpi_teste = {
         'dados_flutuacao': {
-            'metodo': 'Leitura direta dos calados', 'lr': 0, 'lm': 1, 'lv': 0,
+            'metodo': 'Leitura direta dos calados', 'lr': 0, 'lm': 0, 'lv': 0,
             'bb_re': '1.875', 'bb_meio': '1.835', 'bb_vante': '1.775', 'be_re': '1.875', 'be_meio': '1.835', 'be_vante': '1.775'
         },
         'densidades_medidas': {'re': '1.025', 'meio': '1.025', 'vante': '1.025'}
@@ -496,7 +512,7 @@ if __name__ == '__main__':
 
     # Calcular os hidrostáticos finais usando o casco corrigido
     calculadora.calcular_densidade_media()
-    calculadora.calcular_hidrostaticos_corrigidos(casco_corrigido)
+    calculadora.calcular_hidrostaticos_corrigidos()
 
     # 3. Verificar os resultados (já são impressos dentro do método)
     print("\n--- TESTE CONCLUÍDO ---")
