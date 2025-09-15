@@ -12,7 +12,7 @@ def integrar(
     funcao_a_integrar: Callable,
     limite_inferior: float,
     limite_superior: float,
-    passo: float = 0.01
+    passo: float = 0.001
 ) -> float:
     """
     Calcula a integral definida de uma função utilizando a regra do trapézio.
@@ -129,9 +129,9 @@ class PropriedadesTrim:
         
         calados = {x: self.funcao_linha_dagua(x) for x in self.posicoes_balizas}
         
-        # Imprime os resultados para verificação
-        for x, z in calados.items():
-            print(f"   - Baliza em x={x:.3f} m: Calado (z) = {z:.3f} m")
+        # # Imprime os resultados para verificação
+        # for x, z in calados.items():
+        #     print(f"   - Baliza em x={x:.3f} m: Calado (z) = {z:.3f} m")
 
         return calados
 
@@ -461,9 +461,9 @@ class PropriedadesHidrostaticas:
             # Utiliza 'fsolve' da biblioteca SciPy, um solver numérico, para encontrar as raízes.
             try:
                 # Procura a interseção de ré, iniciando a busca próximo ao limite de ré.
-                x_re_calc = fsolve(funcao_raiz, x0=(x_lim_re + 1e-6))[0]
+                x_re_calc = fsolve(funcao_raiz, x0=x_lim_re + 1e-6)[0]
                 x_re_calc = x_lim_re if abs(x_re_calc - x_lim_re) <= 1e-6 else x_re_calc
-                print(f'   Raiz de ré encontrada em x = {x_re_calc:.6f} m')
+                # print(f'   Raiz de ré encontrada em x = {x_re_calc:.6f} m')
                 # Valida se a raiz encontrada está dentro dos limites do navio.
                 if not (x_lim_re <= x_re_calc <= x_lim_vante): x_re_calc = x_lim_re
             except:
@@ -474,7 +474,7 @@ class PropriedadesHidrostaticas:
                 # Procura a interseção de vante, iniciando a busca próximo ao limite de vante.
                 x_vante_calc = fsolve(funcao_raiz, x0=(x_lim_vante - 1e-6))[0]
                 x_vante_calc = x_lim_vante if abs(x_vante_calc - x_lim_vante) <= 1e-6 else x_vante_calc
-                print(f'   Raiz de vante encontrada em x = {x_vante_calc:.6f} m')
+                # print(f'   Raiz de vante encontrada em x = {x_vante_calc:.6f} m')
                 if not (x_lim_re <= x_vante_calc <= x_lim_vante): x_vante_calc = x_lim_vante
             except:
                 x_vante_calc = x_lim_vante
@@ -1063,7 +1063,7 @@ if __name__ == '__main__':
     print("Cenário 1: Teste em Águas Parelhas")
     print("-"*50)
     
-    calado_direito = 2
+    calado_direito = 0.2143
     print(f"Analisando com calado direito = {calado_direito:.2f} m...")
 
     props_direito = PropriedadesHidrostaticas(
@@ -1071,87 +1071,81 @@ if __name__ == '__main__':
         densidade=1.025,
         calado=calado_direito
     )
-
-    print("\n--- Resultados Esperados (Águas Parelhas) ---")
-    print("LWL: 10.000 m (comprimento total)")
-    print("BWL: 4.000 m (boca total)")
-    print("Área de qualquer seção: Boca * Calado = 4.0 * 1.0 = 4.000 m²")
-    print("AWP: LWL * BWL = 10.0 * 4.0 = 40.000 m²")
     
     print("\n--- Resultados Calculados (Águas Parelhas) ---")
-    print(f"LWL: {props_direito.lwl:.3f} m")
-    print(f"BWL: {props_direito.bwl:.3f} m")
+    print(f"LWL: {props_direito.lwl:.4f} m")
+    print(f"BWL: {props_direito.bwl:.4f} m")
     for x, area in props_direito.areas_secoes.items():
-        print(f"Área da seção em x={x:.1f}: {area:.3f} m²")
-    print(f"AWP: {props_direito.area_plano_flutuacao:.3f} m²")
-    print(f"Volume: {props_direito.volume:.3f} m³")
-    print(f"Deslocamento: {props_direito.deslocamento:.3f} t")
-    print(f"LCB: {props_direito.lcb:.3f} m (esperado: 5.000 m)")
-    print(f"VCB: {props_direito.vcb:.3f} m (esperado: 0.500 m)")
-    print(f"LCF: {props_direito.lcf:.3f} m (esperado: 5.000 m)")
-    print(f"BMt: {props_direito.bmt:.3f} m (esperado: 1.333 m)")
-    print(f"KMt: {props_direito.kmt:.3f} m (esperado: 1.833 m)")
-    print(f"BMl: {props_direito.bml:.3f} m (esperado: 1.333 m)")
-    print(f"KMl: {props_direito.kml:.3f} m (esperado: 1.833 m)")
-    print(f"TPC: {props_direito.tpc:.3f} t/cm (esperado: 4.100 t/cm)")
-    print(f"MTc: {props_direito.mtc:.3f} t·m/cm (esperado: 0.267 t·m/cm)")
-    print(f"Cb: {props_direito.cb:.3f} (esperado: 0.250)")
-    print(f"Cp: {props_direito.cp:.3f} (esperado: 0.500)")
-    print(f"Cwp: {props_direito.cwp:.3f} (esperado: 1.000)")
-    print(f"Cm: {props_direito.cm:.3f} (esperado: 0.500)")
+        print(f"Área da seção em x={x:.1f}: {area:.4f} m²")
+    print(f"AWP: {props_direito.area_plano_flutuacao:.4f} m²")
+    print(f"Volume: {props_direito.volume:.4f} m³")
+    print(f"Deslocamento: {props_direito.deslocamento:.4f} t")
+    print(f"LCB: {props_direito.lcb:.4f} m")
+    print(f"VCB: {props_direito.vcb:.4f} m")
+    print(f"LCF: {props_direito.lcf:.4f} m")
+    print(f"BMt: {props_direito.bmt:.4f} m")
+    print(f"KMt: {props_direito.kmt:.4f} m")
+    print(f"BMl: {props_direito.bml:.4f} m")
+    print(f"KMl: {props_direito.kml:.4f} m")
+    print(f"TPC: {props_direito.tpc:.4f} t/cm")
+    print(f"MTc: {props_direito.mtc:.4f} t·m/cm")
+    print(f"Cb: {props_direito.cb:.4f}")
+    print(f"Cp: {props_direito.cp:.4f}")
+    print(f"Cwp: {props_direito.cwp:.4f}")
+    print(f"Cm: {props_direito.cm:.4f}")
 
 
-    # --- 3. TESTE EM CONDIÇÃO TRIMADA ---
-    print("\n" + "-"*50)
-    print("Cenário 2: Teste em Condição Trimada")
-    print("-"*50)
+    # # --- 3. TESTE EM CONDIÇÃO TRIMADA ---
+    # print("\n" + "-"*50)
+    # print("Cenário 2: Teste em Condição Trimada")
+    # print("-"*50)
 
-    calado_re_teste = 2.5
-    calado_vante_teste = 1.5
-    lpp_teste = 19.713
-    print(f"Analisando com Calado Ré={calado_re_teste:.2f} m e Calado Vante={calado_vante_teste:.2f} m...")
+    # calado_re_teste = 2.5
+    # calado_vante_teste = 1.5
+    # lpp_teste = 19.713
+    # print(f"Analisando com Calado Ré={calado_re_teste:.2f} m e Calado Vante={calado_vante_teste:.2f} m...")
 
-    # Primeiro, criamos o objeto de trim
-    prop_trim_teste = PropriedadesTrim(
-        calado_re=calado_re_teste,
-        calado_vante=calado_vante_teste,
-        lpp=lpp_teste,
-        posicoes_balizas=casco_caixa.posicoes_balizas
-    )
+    # # Primeiro, criamos o objeto de trim
+    # prop_trim_teste = PropriedadesTrim(
+    #     calado_re=calado_re_teste,
+    #     calado_vante=calado_vante_teste,
+    #     lpp=lpp_teste,
+    #     posicoes_balizas=casco_caixa.posicoes_balizas
+    # )
 
-    # Depois, passamos esse objeto para as PropriedadesHidrostaticas
-    props_trimado = PropriedadesHidrostaticas(
-        interpolador_casco=casco_caixa,
-        densidade=1.025,
-        prop_trim=prop_trim_teste
-    )
+    # # Depois, passamos esse objeto para as PropriedadesHidrostaticas
+    # props_trimado = PropriedadesHidrostaticas(
+    #     interpolador_casco=casco_caixa,
+    #     densidade=1.025,
+    #     prop_trim=prop_trim_teste
+    # )
 
-    print("\n--- Resultados Esperados (Trimado) ---")
-    print("LWL: 10.000 m (comprimento total)")
-    print("BWL: 4.000 m (boca máxima ainda é a mesma)")
-    print("Área da seção em x=0: Boca * Calado Ré = 4.0 * 1.5 = 6.000 m²")
-    print("Área da seção em x=10: Boca * Calado Vante = 4.0 * 0.5 = 2.000 m²")
-    print("AWP: 40.000 m² (para uma caixa com lados verticais, a AWP não muda com o trim)")
+    # # print("\n--- Resultados Esperados (Trimado) ---")
+    # # print("LWL: 10.000 m (comprimento total)")
+    # # print("BWL: 4.000 m (boca máxima ainda é a mesma)")
+    # # print("Área da seção em x=0: Boca * Calado Ré = 4.0 * 1.5 = 6.000 m²")
+    # # print("Área da seção em x=10: Boca * Calado Vante = 4.0 * 0.5 = 2.000 m²")
+    # # print("AWP: 40.000 m² (para uma caixa com lados verticais, a AWP não muda com o trim)")
 
-    print("\n--- Resultados Calculados (Trimado) ---")
-    print(f"LWL: {props_trimado.lwl:.3f} m")
-    print(f"BWL: {props_trimado.bwl:.3f} m")
-    for x, area in props_trimado.areas_secoes.items():
-        print(f"Área da seção em x={x:.1f}: {area:.3f} m²")
-    print(f"AWP: {props_trimado.area_plano_flutuacao:.3f} m²")
-    print(f"Volume: {props_trimado.volume:.3f} m³")
-    print(f"Deslocamento: {props_trimado.deslocamento:.3f} t")
-    print(f"LCB: {props_trimado.lcb:.3f} m (esperado 5.000 m)")
-    print(f"VCB: {props_trimado.vcb:.3f} m (esperado 0.667 m)")
-    print(f"LCF: {props_trimado.lcf:.3f} m (esperado 5.000 m)")
-    print(f"BMt: {props_trimado.bmt:.3f} m (esperado 1.333 m)")
-    print(f"KMt: {props_trimado.kmt:.3f} m (esperado 2.000 m)")
-    print(f"BMl: {props_trimado.bml:.3f} m (esperado 1.333 m)")
-    print(f"KMl: {props_trimado.kml:.3f} m (esperado 2.000 m)")
-    print(f"TPC: {props_trimado.tpc:.3f} t/cm (esperado 4.100 t/cm)")
-    print(f"MTc: {props_trimado.mtc:.3f} t·m/cm (esperado 0.267 t·m/cm)")
-    print(f"Cb: {props_trimado.cb:.3f} (esperado 0.250)")
-    print(f"Cp: {props_trimado.cp:.3f} (esperado 0.500)")
-    print(f"Cwp: {props_trimado.cwp:.3f} (esperado 1.000)")
-    print(f"Cm: {props_trimado.cm:.3f} (esperado 0.500)")
-    print("\n" + "="*60)
+    # print("\n--- Resultados Calculados (Trimado) ---")
+    # print(f"LWL: {props_trimado.lwl:.4f} m")
+    # print(f"BWL: {props_trimado.bwl:.4f} m")
+    # # for x, area in props_trimado.areas_secoes.items():
+    # #     print(f"Área da seção em x={x:.1f}: {area:.4f} m²")
+    # print(f"AWP: {props_trimado.area_plano_flutuacao:.4f} m²")
+    # print(f"Volume: {props_trimado.volume:.4f} m³")
+    # print(f"Deslocamento: {props_trimado.deslocamento:.4f} t")
+    # print(f"LCB: {props_trimado.lcb:.4f} m")
+    # print(f"VCB: {props_trimado.vcb:.4f} m")
+    # print(f"LCF: {props_trimado.lcf:.4f} m")
+    # print(f"BMt: {props_trimado.bmt:.4f} m")
+    # print(f"KMt: {props_trimado.kmt:.4f} m")
+    # print(f"BMl: {props_trimado.bml:.4f} m")
+    # print(f"KMl: {props_trimado.kml:.4f} m")
+    # print(f"TPC: {props_trimado.tpc:.4f} t/cm")
+    # print(f"MTc: {props_trimado.mtc:.4f} t·m/cm")
+    # print(f"Cb: {props_trimado.cb:.4f}")
+    # print(f"Cp: {props_trimado.cp:.4f}")
+    # print(f"Cwp: {props_trimado.cwp:.4f}")
+    # print(f"Cm: {props_trimado.cm:.4f}")
+    # print("\n" + "="*60)

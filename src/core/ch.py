@@ -4,10 +4,145 @@ from scipy.interpolate import interp1d, PchipInterpolator
 from scipy.optimize import fsolve
 from src.utils.integration import integrar
 from scipy.integrate import quad
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Callable
 import concurrent.futures
 import time
 
+class PropriedadesTrim:
+    """
+    Calcula e armazena as propriedades de uma linha d'água trimada.
+
+    A partir dos calados de ré e vante, esta classe modela a linha d'água
+    como uma reta e calcula o calado específico em cada baliza da embarcação.
+    """
+    def __init__(self, calado_re: float, calado_vante: float, lpp: float, posicoes_balizas: List[float]):
+        """
+        Inicializa o objeto PropriedadesTrim.
+
+        Args:
+            calado_re (float): O calado na perpendicular de ré (x=0).
+            calado_vante (float): O calado na perpendicular de vante (x=LPP).
+            lpp (float): O comprimento entre perpendiculares.
+            posicoes_balizas (List[float]): Lista das posições longitudinais (x) das balizas.
+        """
+        if lpp <= 0:
+            raise ValueError("LPP deve ser um valor positivo.")
+
+        self.calado_re: float = calado_re
+        self.calado_vante: float = calado_vante
+        self.lpp: float = lpp
+        self.posicoes_balizas: List[float] = posicoes_balizas
+
+        # Trim = T_vante - T_ré. Positivo é abicado (proa mais funda).
+        self.trim: float = self.calado_vante - self.calado_re
+        
+        # O ângulo de trim é pequeno, então tan(θ) ≈ (T_vante - T_ré) / LPP
+        # Esta é a inclinação 'm' da nossa reta.
+        self.inclinacao: float = self.trim / self.lpp
+
+        # A função que descreve a linha d'água: z(x) = mx + c
+        self.funcao_linha_dagua: Callable[[float], float] = self._criar_funcao_linha_dagua_trimada()
+
+        # O resultado principal: um dicionário com o calado para cada baliza
+        self.calados_por_baliza: Dict[float, float] = self._calcular_calados_nas_balizas()
+
+    def _criar_funcao_linha_dagua_trimada(self) -> Callable[[float], float]:
+        """
+        Cria a equação da reta que representa a linha d'água inclinada.
+
+        A equação é z(x) = m*x + c, onde:
+        - z: é o calado em uma posição x
+        - m: é a inclinação (self.inclinacao)
+        - x: é a posição longitudinal
+        - c: é o calado na origem (x=0), ou seja, o calado de ré (self.calado_re)
+
+        Returns:
+            Callable[[float], float]: Uma função que aceita 'x' e retorna o calado 'z'.
+        """
+        def linha_dagua(x: float) -> float:
+            """Calcula o 'z' da linha d'água na posição 'x'."""
+            return self.inclinacao * x + self.calado_re
+        
+        return linha_dagua
+
+    def _calcular_calados_nas_balizas(self) -> Dict[float, float]:
+        """
+        Usa a função da linha d'água para calcular o calado em cada baliza.
+
+        Returns:
+            Dict[float, float]: Dicionário mapeando a posição 'x' de cada baliza
+                                ao seu calado 'z' correspondente.
+        """
+        print("\n-> Calculando calados para cada baliza na linha d'água trimada...")
+        
+        calados = {x: self.funcao_linha_dagua(x) for x in self.posicoes_balizas}
+        
+        # # Imprime os resultados para verificação
+        # for x, z in calados.items():
+        #     print(f"   - Baliza em x={x:.3f} m: Calado (z) = {z:.3f} m")
+
+        return calados
+
+    def __repr__(self) -> str:
+        """Representação em string do objeto para fácil visualização."""
+        sinal = "abicado" if self.trim > 0 else "apopado" if self.trim < 0 else "sem trim"
+        return (f"PropriedadesTrim(Trim={abs(self.trim):.3f}m {sinal})")
+
+class PropriedadesDeflexao:
+    """
+    Gerencia a aplicação da correção de deflexão (hogging/sagging) na geometria do casco.
+    """
+    def __init__(self, deflexao: float, tabela_cotas: pd.DataFrame, lpp: float):
+        """
+        Inicializa o objeto PropriedadesDeflexao.
+
+        Args:
+            deflexao (float): O valor da deflexão máxima a meio-navio.
+            casco (InterpoladorCasco): A representação interpolada da geometria do casco.
+            dados_hidrostaticos (Dict[str, float]): Dicionário com dados hidrostáticos.
+        """
+        self.deflexao: float = deflexao
+        self.tabela_cotas: pd.DataFrame = tabela_cotas
+        self.lpp: float = lpp
+
+    def aplicar_correcao_deflexao(self) -> pd.DataFrame:
+        """
+        Aplica a correção de deflexão (hogging/sagging) à geometria do casco.
+
+        Este método utiliza a deflexão máxima calculada a meio-navio e a modela
+        como uma curva parabólica ao longo do comprimento da embarcação. A correção
+        vertical correspondente é então aplicada a cada ponto da tabela de cotas
+        original, gerando um novo objeto InterpoladorCasco que representa a
+        geometria deformada da embarcação.
+
+        Returns:
+            tabela_corrigida: Retorna um novo DataFrame com as coordenadas 'z' ajustadas.
+        """
+        print("\n-> A aplicar correção de deflexão à tabela de cotas...")
+        
+        deflexao_maxima = self.deflexao
+        lpp = float(self.lpp)
+        
+        # Copia a tabela de cotas original para não modificar os dados base
+        tabela_corrigida = self.tabela_cotas.copy()
+        
+        # 1. Função da parábola de deflexão
+        # d(x) = 4 * deflexao_maxima * (Lpp*x - x^2) / Lpp^2
+        def calcular_delta_z(x):
+            if lpp == 0: return 0
+            return (4 * deflexao_maxima * (lpp * x - x**2)) / (lpp**2)
+
+        # 2. Aplicar a correção a todos os pontos 'z' da tabela
+        # A função .apply do pandas é eficiente para esta operação
+        tabela_corrigida['z'] = tabela_corrigida.apply(
+            lambda row: row['z'] + calcular_delta_z(row['x']),
+            axis=1
+        )
+        
+        print("   Correção de deflexão aplicada com sucesso.")
+        
+        return tabela_corrigida
+    
 class InterpoladorCasco:
     """
     Representa a geometria do casco através de funções de interpolação.
@@ -29,16 +164,23 @@ class InterpoladorCasco:
     consulte: Principles of Naval Architecture (Second Revision), Volume I,
     Chapter I, Section 2.
     """
-    def __init__(self, tabela_cotas: pd.DataFrame, metodo_interp: str = 'linear'):
+    def __init__(self, tabela_cotas: pd.DataFrame, metodo_interp: str = 'linear',
+                 prop_deflexao: PropriedadesDeflexao = None):
         """
         Inicializa o objeto InterpoladorCasco.
 
         Args:
-            tabela_cotas (pd.DataFrame): DataFrame com as coordenadas (x, y, z)
-                                         do casco, já processado e validado.
-            metodo_interp (str, optional): Método de interpolação: 'linear' ou 'pchip'.
+            tabela_cotas (pd.DataFrame): DataFrame com as coordenadas do casco.
+            metodo_interp (str, optional): Método de interpolação ('linear' ou 'pchip').
+            prop_deflexao (PropriedadesDeflexao, optional): Objeto com os parâmetros de deflexão.
+                                                         Se fornecido, a tabela de cotas será corrigida.
+            prop_trim (PropriedadesTrim, optional): Objeto com os parâmetros de trim.
         """
-        self.tabela_cotas: pd.DataFrame = tabela_cotas
+        if prop_deflexao:
+            self.tabela_cotas: pd.DataFrame = prop_deflexao.aplicar_correcao_deflexao()
+        else:
+            self.tabela_cotas: pd.DataFrame = tabela_cotas
+
         self.metodo_interp: str = metodo_interp
         self.posicoes_balizas: List[float] = sorted(self.tabela_cotas['x'].unique())
         self.funcoes_baliza: Dict[float, Any] = self._gerar_interpoladores_secao()
@@ -99,7 +241,7 @@ class InterpoladorCasco:
                 return interp1d(x_coords, z_coords, kind='linear', bounds_error=False, fill_value=0.0)
             
         # Retorna None se não for possível gerar um interpolador.
-        return None    
+        return None
         
 class PropriedadesHidrostaticas:
     """
@@ -109,7 +251,7 @@ class PropriedadesHidrostaticas:
     do navio e calcular suas características de flutuação, estabilidade e forma
     para uma condição de carregamento específica (definida pelo calado).
     """
-    def __init__(self, interpolador_casco: InterpoladorCasco, calado: float, densidade: float):
+    def __init__(self, interpolador_casco: InterpoladorCasco, densidade: float, calado: float = None, prop_trim: 'PropriedadesTrim' = None):
         """
         Inicializa o objeto de cálculo para um calado específico.
 
@@ -117,11 +259,25 @@ class PropriedadesHidrostaticas:
             interpolador_casco (InterpoladorCasco): O objeto que contém a geometria
                                                     funcional do casco.
             calado (float): O calado (T) para o qual as propriedades serão calculadas [m].
-            densidade (float): A densidade da água [t/m³].
+            densidade (float): A densidade da água [t/m³]
+            prop_trim (PropriedadesTrim, optional): Objeto para uma condição trimada.
+        
+        É obrigatório fornecer 'calado' OU 'prop_trim'.
         """
+        if calado is None and prop_trim is None:
+            raise ValueError("Especifique 'calado' (águas parelhas) ou 'prop_trim' (condição trimada).")
+        
         self.casco: InterpoladorCasco = interpolador_casco
-        self.calado: float = calado
         self.densidade: float = densidade
+        self.prop_trim: 'PropriedadesTrim' = prop_trim
+
+        # Define um calado de referência. Para trim, usamos o calado a meio-navio (LPP/2)
+        # como referência principal, mas os cálculos usarão os calados específicos.
+        if self.prop_trim:
+            lpp_meio = self.prop_trim.lpp / 2
+            self.calado: float = self.prop_trim.funcao_linha_dagua(lpp_meio)
+        else:
+            self.calado: float = calado
         
         # Atributos que serão calculados pelos métodos
         self.lwl: float = 0.0  # Comprimento na linha d'água
@@ -196,25 +352,56 @@ class PropriedadesHidrostaticas:
           buscando as interseções (raízes) entre a função do perfil do casco
           e a linha d'água (z = calado).
         """
-        # --- Cálculo da Boca na Linha d'Água (BWL) ---
+        # --- LÓGICA CONDICIONAL ---
         meia_boca_max = 0.0
-        # Itera sobre todas as funções de interpolação de baliza disponíveis.
-        for funcao_baliza in self.casco.funcoes_baliza.values():
-            # Para cada baliza, calcula a meia-boca na altura exata do calado.
-            meia_boca_atual = np.nan_to_num(float(funcao_baliza(self.calado)))
-            # Atualiza o valor máximo encontrado.
-            if meia_boca_atual > meia_boca_max:
-                meia_boca_max = meia_boca_atual
+
+        if self.prop_trim:
+            # --- CÁLCULO COM TRIM ---
+            print("-> Calculando dimensões da linha d'água para condição TRIMADA...")
+
+            # Cálculo da BWL (Boca na Linha d'Água) com trim
+            # Itera sobre todas as funções de interpolação de baliza disponíveis.
+            for x, funcao_baliza in self.casco.funcoes_baliza.items():
+                # Pega o calado específico para esta baliza do dicionário
+                calado_especifico = self.prop_trim.calados_por_baliza[x]
+                # Para cada baliza, calcula a meia-boca na altura exata do calado.
+                meia_boca_atual = np.nan_to_num(float(funcao_baliza(calado_especifico)))
+                # Atualiza o valor máximo encontrado.
+                if meia_boca_atual > meia_boca_max:
+                    meia_boca_max = meia_boca_atual
+            
+            # Cálculo do LWL (Comprimento na Linha d'Água) com trim
+            if self.casco.funcao_perfil:
+                # Define uma função cujo zero corresponde à interseção do perfil com o calado.
+                # f(x) = z_perfil(x) - função da linha d'água inclinada. Queremos encontrar x tal que f(x) = 0.
+                funcao_linha_dagua_trimada = self.prop_trim.funcao_linha_dagua
+                funcao_raiz = lambda x: self.casco.funcao_perfil(x) - funcao_linha_dagua_trimada(x)
+        else:
+            # --- CÁLCULO ORIGINAL (ÁGUAS PARELHAS) ---
+            print("-> Calculando dimensões da linha d'água para ÁGUAS PARELHAS...")
+
+            # Cálculo da BWL
+            # Itera sobre todas as funções de interpolação de baliza disponíveis.
+            for funcao_baliza in self.casco.funcoes_baliza.values():
+                # Para cada baliza, calcula a meia-boca na altura exata do calado.
+                meia_boca_atual = np.nan_to_num(float(funcao_baliza(self.calado)))
+                # Atualiza o valor máximo encontrado.
+                if meia_boca_atual > meia_boca_max:
+                    meia_boca_max = meia_boca_atual
+
+            # Cálculo do LWL
+            if self.casco.funcao_perfil:
+                # Define uma função cujo zero corresponde à interseção do perfil com o calado.
+                # f(x) = z_perfil(x) - calado. Queremos encontrar x tal que f(x) = 0.
+                funcao_raiz = lambda x: self.casco.funcao_perfil(x) - self.calado
+
+        
         # A boca total (BWL) é o dobro da máxima meia-boca.
         self.bwl = meia_boca_max * 2
 
         # --- Cálculo do Comprimento na Linha d'Água (LWL) ---
         # Verifica se o interpolador do perfil do casco foi criado com sucesso.
         if self.casco.funcao_perfil:
-            # Define uma função cujo zero corresponde à interseção do perfil com o calado.
-            # f(x) = z_perfil(x) - calado. Queremos encontrar x tal que f(x) = 0.
-            funcao_raiz = lambda x: self.casco.funcao_perfil(x) - self.calado
-            
             # Obtém os limites longitudinais do casco para guiar a busca pelas raízes.
             x_lim_re = self.casco.funcao_perfil.x.min()
             x_lim_vante = self.casco.funcao_perfil.x.max()
@@ -223,6 +410,8 @@ class PropriedadesHidrostaticas:
             try:
                 # Procura a interseção de ré, iniciando a busca próximo ao limite de ré.
                 x_re_calc = fsolve(funcao_raiz, x0=x_lim_re + 1e-6)[0]
+                x_re_calc = x_lim_re if abs(x_re_calc - x_lim_re) <= 1e-6 else x_re_calc
+                # print(f'   Raiz de ré encontrada em x = {x_re_calc:.6f} m')
                 # Valida se a raiz encontrada está dentro dos limites do navio.
                 if not (x_lim_re <= x_re_calc <= x_lim_vante): x_re_calc = x_lim_re
             except:
@@ -231,7 +420,9 @@ class PropriedadesHidrostaticas:
 
             try:
                 # Procura a interseção de vante, iniciando a busca próximo ao limite de vante.
-                x_vante_calc = fsolve(funcao_raiz, x0=x_lim_vante - 1e-6)[0]
+                x_vante_calc = fsolve(funcao_raiz, x0=(x_lim_vante - 1e-6))[0]
+                x_vante_calc = x_lim_vante if abs(x_vante_calc - x_lim_vante) <= 1e-6 else x_vante_calc
+                # print(f'   Raiz de vante encontrada em x = {x_vante_calc:.6f} m')
                 if not (x_lim_re <= x_vante_calc <= x_lim_vante): x_vante_calc = x_lim_vante
             except:
                 x_vante_calc = x_lim_vante
@@ -242,31 +433,82 @@ class PropriedadesHidrostaticas:
             # O LWL é a distância entre os pontos de interseção.
             self.lwl = self.x_vante - self.x_re
 
-    def _calcular_area_secao(self, x_baliza: float) -> float:
-        """
-        Calcula a área submersa de uma única seção transversal (baliza).
+    # def _calcular_area_secao(self, x_baliza: float) -> float:
+    #     """
+    #     Calcula a área submersa de uma única seção transversal (baliza).
 
-        A área é obtida pela integração numérica da função da meia-boca (y(z))
-        desde a quilha (z=0) até o calado atual. A função `quad` da biblioteca
-        SciPy é utilizada para realizar a integração. O resultado é multiplicado
-        por dois para obter a área total da seção (bombordo e estibordo).
+    #     A área é obtida pela integração numérica da função da meia-boca (y(z))
+    #     desde a quilha (z=0) até o calado atual. A função `quad` da biblioteca
+    #     SciPy é utilizada para realizar a integração. O resultado é multiplicado
+    #     por dois para obter a área total da seção (bombordo e estibordo).
 
-        Referência: O cálculo de áreas seccionais por integração é um procedimento
-        padrão. Ver "Principles of Naval Architecture", Vol. I, Cap. I, Seção 3.
+    #     Referência: O cálculo de áreas seccionais por integração é um procedimento
+    #     padrão. Ver "Principles of Naval Architecture", Vol. I, Cap. I, Seção 3.
 
-        Args:
-            x_baliza (float): A posição longitudinal (X) da baliza.
+    #     Args:
+    #         x_baliza (float): A posição longitudinal (X) da baliza.
 
-        Returns:
-            float: A área da seção transversal submersa [m²].
-        """
-        # A integral de 2 * y(z) dz de 0 a T, pode ser calculada como
-        # 2 * integral de y(z) dz. A função a ser integrada é a meia-boca.
-        funcao_a_integrar = lambda z: self._obter_meia_boca(x_baliza, z)
-        area_meio_casco = integrar(funcao_a_integrar, 0, self.calado)
+    #     Returns:
+    #         float: A área da seção transversal submersa [m²].
+    #     """
+    #     if self.trim == True:
+    #         raise NotImplementedError("Cálculo com trim ainda não implementado.")
         
-        # A área total da seção é o dobro da área de meio casco.
-        return area_meio_casco * 2
+    #     # A integral de 2 * y(z) dz de 0 a T, pode ser calculada como
+    #     # 2 * integral de y(z) dz. A função a ser integrada é a meia-boca.
+    #     funcao_a_integrar = lambda z: self._obter_meia_boca(x_baliza, z)
+    #     area_meio_casco = integrar(funcao_a_integrar, 0, self.calado)
+        
+    #     # A área total da seção é o dobro da área de meio casco.
+    #     return area_meio_casco * 2
+    
+    def _calcular_area_secao(self):
+        """
+        Calcula a área submersa de cada seção transversal (baliza).
+
+        Aplica uma lógica condicional:
+        - Se houver trim, utiliza o calado específico de cada baliza como
+          limite superior da integração.
+        - Para águas parelhas, utiliza o calado constante.
+
+        O limite inferior da integração é sempre a altura da quilha na
+        posição da baliza.
+        """
+        self.areas_secoes = {}
+        funcao_perfil_casco = self.casco.funcao_perfil
+
+        if funcao_perfil_casco is None:
+            print("AVISO: Função de perfil do casco não definida. Não é possível calcular áreas.")
+            return
+
+        print("-> Calculando áreas das seções transversais...")
+
+        # Itera sobre as posições (x) e as funções de interpolação (y=f(z)) de cada baliza.
+        for x, funcao_baliza in self.casco.funcoes_baliza.items():
+            
+            # 1. Limite Inferior: Encontra a altura da quilha em 'x'.
+            z_quilha = float(funcao_perfil_casco(x))
+            
+            # 2. Limite Superior: Determina o calado (linha d'água) em 'x'.
+            if self.prop_trim:
+                # Caso com trim: pega o calado específico do dicionário.
+                z_linha_dagua = self.prop_trim.calados_por_baliza[x]
+            else:
+                # Caso sem trim (águas parelhas): usa o calado único.
+                z_linha_dagua = self.calado
+
+            # 3. Integração Numérica
+            # Só calcula a área se a seção estiver de fato submersa.
+            if z_linha_dagua > z_quilha:
+                # A integral de y(z) dz de z_quilha a z_linha_dagua nos dá a área da meia-seção.
+                # A função 'quad' da Scipy faz essa integração.
+                area_meia_secao = integrar(funcao_baliza, z_quilha, z_linha_dagua)
+                
+                # A área total é o dobro (bombordo + estibordo).
+                self.areas_secoes[x] = area_meia_secao * 2
+            else:
+                # Se a seção está fora d'água, sua área submersa é zero.
+                self.areas_secoes[x] = 0.0
     
     def _calcular_area_plano_flutuacao(self):
         """
@@ -277,42 +519,119 @@ class PropriedadesHidrostaticas:
         integra numericamente esta função ao longo do LWL para obter a área.
         Lógica especial é aplicada para tratar as extremidades do casco.
         """
-        # 1. Obtém as meias-bocas no calado atual para todas as balizas internas
-        #    (que estão estritamente dentro dos limites da linha d'água).
-        balizas_internas_x = [
-            x for x in self.casco.posicoes_balizas 
-            if x > self.x_re and x < self.x_vante
-        ]
-        balizas_internas_y = [self._obter_meia_boca(x, self.calado) for x in balizas_internas_x]
+        # 1. Obter as posições 'x' dos pontos que definem a linha d'água.
+        #    Incluímos as extremidades (x_re, x_vante) e as balizas internas.
+        x_pontos = sorted(list(set(
+            [self.x_re] + 
+            [x for x in self.casco.posicoes_balizas if self.x_re < x < self.x_vante] + 
+            [self.x_vante]
+        )))
 
-        # 2. Determina as meias-bocas nas extremidades (x_re e x_vante),
-        #    considerando que a meia-boca pode ser zero se a linha d'água não
-        #    coincidir com uma baliza física (ex: proa lançada).
+        # As balizas de proa e popa para referência
         baliza_popa_x = min(self.casco.posicoes_balizas)
         baliza_proa_x = max(self.casco.posicoes_balizas)
-        tolerancia = 1e-3
-        y_re = self._obter_meia_boca(baliza_popa_x, self.calado) if abs(self.x_re - baliza_popa_x) < tolerancia else 0.0
-        y_vante = self._obter_meia_boca(baliza_proa_x, self.calado) if abs(self.x_vante - baliza_proa_x) < tolerancia else 0.0
+        tolerancia = 1e-6
 
-        # 3. Constrói as listas de pontos (x, y) que definem a linha d'água.
-        x_pontos = [self.x_re] + balizas_internas_x + [self.x_vante]
-        y_pontos = [y_re] + balizas_internas_y + [y_vante]
+        # Lista para armazenar as meias-bocas correspondentes
+        y_pontos = []
         
-        if len(x_pontos) < 2: return # Impossível interpolar.
+        # 2. Calcular as meias-bocas 'y' para cada ponto 'x'.
+        if self.prop_trim:
+            # --- LÓGICA PARA TRIM ---
+            # Para cada ponto 'x', encontramos o calado específico na linha d'água
+            # inclinada e então calculamos a meia-boca correspondente.
+            for x in x_pontos:
+                # Obtém o calado específico na posição 'x' usando a função da linha d'água.
+                calado_especifico = self.prop_trim.funcao_linha_dagua(x)
+                if x == x_pontos[0] or x == x_pontos[-1]:
+                    # Nas extremidades, a meia boca é zero se não coincidir com uma baliza.
+                    if x == x_pontos[0]:
+                        meia_boca = self._obter_meia_boca(x, calado_especifico) if abs(self.x_re - baliza_popa_x) < tolerancia else 0.0
+                        y_pontos.append(meia_boca)
+                    else:
+                        meia_boca = self._obter_meia_boca(x, calado_especifico) if abs(self.x_vante - baliza_proa_x) < tolerancia else 0.0
+                        y_pontos.append(meia_boca)
+                else:
+                    # Para pontos internos, calcula normalmente a meia-boca.
+                    calado_especifico = self.prop_trim.funcao_linha_dagua(x)
+                    meia_boca = self._obter_meia_boca(x, calado_especifico)
+                    y_pontos.append(meia_boca)
+        else:
+            # --- LÓGICA PARA ÁGUAS PARELHAS (ORIGINAL) ---
+            # O calado é o mesmo para todos os pontos 'x'.
+            for x in x_pontos:
+                if x == x_pontos[0] or x == x_pontos[-1]:
+                    # Nas extremidades, a meia boca é zero se não coincidir com uma baliza.
+                    if x == x_pontos[0]:
+                        meia_boca = self._obter_meia_boca(x, self.calado) if abs(self.x_re - baliza_popa_x) < tolerancia else 0.0
+                        y_pontos.append(meia_boca)
+                    else:
+                        meia_boca = self._obter_meia_boca(x, self.calado) if abs(self.x_vante - baliza_proa_x) < tolerancia else 0.0
+                        y_pontos.append(meia_boca)
+                else:
+                    # Para pontos internos, calcula normalmente a meia-boca.
+                    meia_boca = self._obter_meia_boca(x, self.calado)
+                    y_pontos.append(meia_boca)
+                
 
         # Garante pontos únicos e ordenados para o interpolador.
         pontos_unicos = sorted(list(set(zip(x_pontos, y_pontos))))
         x_pontos_unicos, y_pontos_unicos = [p[0] for p in pontos_unicos], [p[1] for p in pontos_unicos]
 
-        # 4. Cria o interpolador para a linha d'água (y=f(x)).
+        # 3. Construir e integrar o interpolador da linha d'água (y=f(x))
+        if len(x_pontos) < 2:
+            self.area_plano_flutuacao = 0.0
+            return
+
+        # Cria o interpolador para a linha d'água (meia-boca em função de x).
         if self.casco.metodo_interp == 'pchip':
             self.interpolador_wl = PchipInterpolator(x_pontos_unicos, y_pontos_unicos, extrapolate=False)
         else:
             self.interpolador_wl = interp1d(x_pontos_unicos, y_pontos_unicos, kind='linear', bounds_error=False, fill_value=0.0)
 
-        # 5. Integra o interpolador da linha d'água para obter a meia-área.
+        # Integra a função da meia-boca ao longo do LWL para obter a meia-área.
         meia_area = integrar(self.interpolador_wl, self.x_re, self.x_vante)
+        
+        # A área total do plano de flutuação é o dobro da meia-área.
         self.area_plano_flutuacao = meia_area * 2
+
+
+        # # 1. Obtém as meias-bocas no calado atual para todas as balizas internas
+        # #    (que estão estritamente dentro dos limites da linha d'água).
+        # balizas_internas_x = [
+        #     x for x in self.casco.posicoes_balizas 
+        #     if x > self.x_re and x < self.x_vante
+        # ]
+        # balizas_internas_y = [self._obter_meia_boca(x, self.calado) for x in balizas_internas_x]
+
+        # # 2. Determina as meias-bocas nas extremidades (x_re e x_vante),
+        # #    considerando que a meia-boca pode ser zero se a linha d'água não
+        # #    coincidir com uma baliza física (ex: proa lançada).
+        # baliza_popa_x = min(self.casco.posicoes_balizas)
+        # baliza_proa_x = max(self.casco.posicoes_balizas)
+        # tolerancia = 1e-3
+        # y_re = self._obter_meia_boca(baliza_popa_x, self.calado) if abs(self.x_re - baliza_popa_x) < tolerancia else 0.0
+        # y_vante = self._obter_meia_boca(baliza_proa_x, self.calado) if abs(self.x_vante - baliza_proa_x) < tolerancia else 0.0
+
+        # # 3. Constrói as listas de pontos (x, y) que definem a linha d'água.
+        # x_pontos = [self.x_re] + balizas_internas_x + [self.x_vante]
+        # y_pontos = [y_re] + balizas_internas_y + [y_vante]
+        
+        # if len(x_pontos) < 2: return 0.0 # Impossível interpolar.
+
+        # # Garante pontos únicos e ordenados para o interpolador.
+        # pontos_unicos = sorted(list(set(zip(x_pontos, y_pontos))))
+        # x_pontos_unicos, y_pontos_unicos = [p[0] for p in pontos_unicos], [p[1] for p in pontos_unicos]
+
+        # # 4. Cria o interpolador para a linha d'água (y=f(x)).
+        # if self.casco.metodo_interp == 'pchip':
+        #     self.interpolador_wl = PchipInterpolator(x_pontos_unicos, y_pontos_unicos, extrapolate=False)
+        # else:
+        #     self.interpolador_wl = interp1d(x_pontos_unicos, y_pontos_unicos, kind='linear', bounds_error=False, fill_value=0.0)
+
+        # # 5. Integra o interpolador da linha d'água para obter a meia-área.
+        # meia_area = integrar(self.interpolador_wl, self.x_re, self.x_vante)
+        # self.area_plano_flutuacao = meia_area * 2
         
 
     def _calcular_volume_deslocamento(self):
@@ -398,26 +717,27 @@ class PropriedadesHidrostaticas:
         # LCB é o momento de volume dividido pelo volume.
         self.lcb = momento_long_volume / self.volume
 
-    def _calcular_momento_vertical_secao(self, x_baliza: float) -> float:
-        """
-        Calcula o momento de área vertical de uma única seção transversal.
+    # def _calcular_momento_vertical_secao(self, x_baliza: float) -> float:
+    #     """
+    #     Calcula o momento de área vertical de uma única seção transversal.
 
-        Este é um método auxiliar para o cálculo do VCB. Ele calcula o primeiro
-        momento de área da seção submersa em relação à linha de base (z=0).
-        A integral é de z * 2y(z) dz.
+    #     Este é um método auxiliar para o cálculo do VCB. Ele calcula o primeiro
+    #     momento de área da seção submersa em relação à linha de base (z=0).
+    #     A integral é de z * 2y(z) dz.
 
-        Args:
-            x_baliza (float): A posição longitudinal (X) da baliza.
+    #     Args:
+    #         x_baliza (float): A posição longitudinal (X) da baliza.
 
-        Returns:
-            float: O momento vertical da área da seção [m³].
-        """
-        # A função a ser integrada é z * largura_total(z) = z * 2y(z).
-        funcao_momento = lambda z: z * (2 * self._obter_meia_boca(x_baliza, z))
+    #     Returns:
+    #         float: O momento vertical da área da seção [m³].
+    #     """
         
-        # Integra de 0 (quilha) até o calado atual.
-        momento_vertical = integrar(funcao_momento, 0, self.calado)
-        return momento_vertical
+    #     # A função a ser integrada é z * largura_total(z) = z * 2y(z).
+    #     funcao_momento = lambda z: z * (2 * self._obter_meia_boca(x_baliza, z))
+        
+    #     # Integra de 0 (quilha) até o calado atual.
+    #     momento_vertical = integrar(funcao_momento, 0, self.calado)
+    #     return momento_vertical
 
     def _calcular_vcb(self):
         """
@@ -433,11 +753,29 @@ class PropriedadesHidrostaticas:
             self.vcb = 0.0
             return
 
-        # 1. Calcula o momento vertical para cada baliza física do casco.
-        momentos_verticais = {
-            x: self._calcular_momento_vertical_secao(x) 
-            for x in self.casco.posicoes_balizas
-        }
+        # 1. Calcular o momento vertical para cada seção transversal.
+        momentos_verticais = {}
+        funcao_perfil_casco = self.casco.funcao_perfil
+
+        for x, funcao_baliza in self.casco.funcoes_baliza.items():
+            # Limite inferior: altura da quilha em 'x'.
+            z_quilha = float(funcao_perfil_casco(x))
+            
+            # Limite superior: calado (linha d'água) em 'x'.
+            if self.prop_trim:
+                z_linha_dagua = self.prop_trim.calados_por_baliza[x]
+            else:
+                z_linha_dagua = self.calado
+
+            if z_linha_dagua > z_quilha:
+                # A função a ser integrada é z * largura_total(z) = z * 2*y(z).
+                funcao_momento = lambda z: z * (2 * funcao_baliza(z))
+                
+                # Integra do fundo do casco (quilha) até a linha d'água.
+                momento_secao, _ = quad(funcao_momento, z_quilha, z_linha_dagua)
+                momentos_verticais[x] = momento_secao
+            else:
+                momentos_verticais[x] = 0.0
             
         # 2. Cria um interpolador para a curva de momentos verticais (Momento = f(x)).
         x_pontos, momentos_pontos = zip(*sorted(momentos_verticais.items()))
@@ -499,7 +837,7 @@ class PropriedadesHidrostaticas:
         Após o cálculo das áreas, volumes, centros e momentos de inércia, este
         método calcula os parâmetros de estabilidade e os coeficientes de forma,
         que são relações adimensionais usadas para caracterizar a geometria do casco.
-        """
+        """        
         # --- Estabilidade Transversal ---
         # Raio metacêntrico transversal (BMt): I_T / Volume
         self.bmt = self.momento_inercia_transversal / self.volume if self.volume > 1e-6 else 0.0
@@ -551,20 +889,23 @@ class PropriedadesHidrostaticas:
         # Cálculo dos centroides longitudinais
         self._calcular_lcf()
         
-        # Cálculos de volume (requerem as áreas das seções)
-        for x_pos in self.casco.posicoes_balizas:
-            self.areas_secoes[x_pos] = self._calcular_area_secao(x_pos)
+        # # Cálculos de volume (requerem as áreas das seções)
+        # for x_pos in self.casco.posicoes_balizas:
+        #     self.areas_secoes[x_pos] = self._calcular_area_secao(x_pos)
+
+        self._calcular_area_secao()
+
         self._calcular_volume_deslocamento()
         self._calcular_lcb()
 
-        # Cálculo do centroide vertical (requer o volume)
+        # # Cálculo do centroide vertical (requer o volume)
         self._calcular_vcb()
 
-        # Cálculo dos momentos de inércia
+        # # Cálculo dos momentos de inércia
         self._calcular_momento_inercia_transversal()
         self._calcular_momento_inercia_longitudinal()
 
-        # Cálculo das propriedades finais
+        # # Cálculo das propriedades finais
         self._calcular_propriedades_derivadas()
 
 def calcular_propriedades_para_um_calado(args):
@@ -584,7 +925,7 @@ def calcular_propriedades_para_um_calado(args):
     """
     interpolador, calado, densidade = args
     # A instanciação da classe executa todos os cálculos para este calado.
-    props = PropriedadesHidrostaticas(interpolador, calado, densidade)
+    props = PropriedadesHidrostaticas(interpolador_casco=interpolador, calado=calado, densidade=densidade)
     
     # Monta um dicionário com os resultados formatados.
     return {
@@ -644,3 +985,60 @@ class CalculadoraHidrostatica:
         # Garante que os resultados estejam ordenados pelo calado.
         resultados.sort(key=lambda r: r['Calado (m)'])
         return pd.DataFrame(resultados)
+    
+
+if __name__ == '__main__':
+    # --- 1. CONFIGURAÇÃO INICIAL ---
+    # Usando o caminho do arquivo para carregar a geometria da embarcação.
+    # Garanta que o caminho para o seu arquivo CSV está correto.
+    try:
+        caminho_arquivo = r"C:\Users\afmn\Desktop\TCC\data\exemplos_tabelas_cotas\TABELA DE COTAS.csv"
+        dados_casco = pd.read_csv(caminho_arquivo)
+    except FileNotFoundError:
+        print(f"ERRO: O arquivo de teste não foi encontrado em '{caminho_arquivo}'")
+        print("Por favor, verifique o caminho e tente novamente.")
+        exit()
+
+    tabela_cotas = pd.DataFrame(dados_casco)
+    
+    print("="*60)
+    print("INICIANDO TESTE COM A CLASSE CALCULADORA HIDROSTÁTICA")
+    print("="*60)
+
+    # Criando o objeto do casco a partir da tabela de cotas.
+    casco = InterpoladorCasco(tabela_cotas, metodo_interp='linear')
+
+    # --- 2. USANDO A CALCULADORA HIDROSTÁTICA PARA MÚLTIPLOS CALADOS ---
+    print("\n" + "-"*50)
+    print("Cenário: Cálculo das Curvas Hidrostáticas Completas")
+    print("-"*50)
+
+    # Instanciando a calculadora principal que gerencia o processo.
+    calculadora = CalculadoraHidrostatica(
+        interpolador_casco=casco,
+        densidade=1.025
+    )
+
+    # Definindo a lista de calados para os quais queremos as propriedades.
+    calados_para_calcular = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    
+    print(f"Calculando propriedades para os calados: {calados_para_calcular}")
+
+    # Executando o cálculo. O método 'calcular_curvas' cuida do processamento
+    # paralelo e retorna um DataFrame com todos os resultados.
+    df_curvas_hidrostaticas = calculadora.calcular_curvas(calados_para_calcular)
+
+    # --- 3. EXIBIÇÃO DOS RESULTADOS ---
+    print("\n" + "="*60)
+    print("RESULTADO FINAL - TABELA DE CURVAS HIDROSTÁTICAS")
+    print("="*60)
+    
+    # O Pandas formata a tabela de maneira excelente para visualização no terminal.
+    # Usamos 'to_string()' para garantir que todas as colunas sejam mostradas.
+    print(df_curvas_hidrostaticas.to_string())
+
+    # O teste anterior, para um único calado, agora é coberto pelo cálculo acima.
+    # A linha correspondente ao calado de 1.0m na tabela acima conterá os mesmos
+    # resultados que o teste individual.
+    
+    print("\n--- TESTE CONCLUÍDO ---")

@@ -6,7 +6,7 @@ def integrar(
     funcao_a_integrar: Callable,
     limite_inferior: float,
     limite_superior: float,
-    passo: float = 0.01
+    passo: float = 0.001
 ) -> float:
     """
     Calcula a integral definida de uma função utilizando a regra do trapézio.
