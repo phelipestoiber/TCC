@@ -681,7 +681,7 @@ class CalculadoraRPI:
         calado_vante_atual = self.calado_medio
         
         max_iteracoes = 100
-        tolerancia = 5e-4 # Tolerância para convergência (0.05%)
+        tolerancia = 1e-4 # Tolerância para convergência (0.01%)
 
         for i in range(max_iteracoes):
             print(f"\nIteração {i+1}:")
