@@ -785,11 +785,11 @@ if __name__ == '__main__':
         # Injetando pesos de exemplo que seriam coletados pelo menu
         'itens_a_acrescentar': [], # Sem deduções no seu exemplo
         'itens_a_deduzir': [
-            {'nome': 'peso 1', 'peso': '0.2', 'lcg': '6.0565', 'vcg': '4.1'},
-            {'nome': 'peso 2', 'peso': '0.2', 'lcg': '6.2565', 'vcg': '4.1'},
-            {'nome': 'peso 3', 'peso': '0.2', 'lcg': '0.8965', 'vcg': '4.6'},
-            {'nome': 'peso 4', 'peso': '0.2', 'lcg': '0.8965', 'vcg': '4.6'},
-            {'nome': 'pessoas', 'peso': '0.32', 'lcg': '6.8565', 'vcg': '4.3'}
+            {'nome': 'peso 1', 'peso': '0.2', 'lcg': '6.0565', 'vcg': '4.1', 'tcg': '2.75'},
+            {'nome': 'peso 2', 'peso': '0.2', 'lcg': '6.2565', 'vcg': '4.1', 'tcg': '-2.75'},
+            {'nome': 'peso 3', 'peso': '0.2', 'lcg': '0.8965', 'vcg': '4.6', 'tcg': '-2.20'},
+            {'nome': 'peso 4', 'peso': '0.2', 'lcg': '0.8965', 'vcg': '4.6', 'tcg': '2.20'},
+            {'nome': 'pessoas', 'peso': '0.32', 'lcg': '6.8565', 'vcg': '4.3', 'tcg': '0'}
         ]
     }
     
